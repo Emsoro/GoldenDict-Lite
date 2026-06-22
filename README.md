@@ -1,12 +1,12 @@
 # GoldenDict-Lite
 
-轻量级桌面词典，基于 [Lutra](https://github.com/nicereply/TauriCPP)（TauriCPP）框架构建，从 [goldendict-ng-26.6.0](https://github.com/xiaoyifang/goldendict-ng) 提取 MDX 词典解析引擎，实现零外部依赖、单 EXE 部署的现代词典应用。
+轻量级桌面词典，基于 [Lutra](https://github.com/nicereply/TauriCPP)（TauriCPP）框架构建， 支持MDX词典解析引擎，实现零外部依赖、单 EXE 部署的现代词典应用。
 
 ## 特性
 
 - **单 EXE 部署** — WebView2Loader 静态链接，前端资源内嵌，无需安装运行时
 - **MDX 词典支持** — 兼容 GoldenDict 的 .mdx 词典格式，支持加密词典
-- **多词典同时查询** — 自动扫描 `dictionary/` 和 `bing/` 目录，一次查询显示所有词典结果
+- **多词典同时查询** — 自动扫描 `dictionary/`目录，一次查询显示所有词典结果
 - **实时自动补全** — 输入即搜，候选词即时显示
 - **词典图标** — 自动加载同名 .png/.ico 作为词典标识
 - **系统托盘** — 最小化到托盘，双击恢复
@@ -174,11 +174,10 @@ copy src\icon.ico build\Release\
 
 ## 许可证
 
-本项目从 goldendict-ng-26.6.0 提取词典解析代码，原项目采用 GPLv3 许可证。
-Lutra (TauriCPP) 框架采用 MIT 许可证。
+MIT
 
 ## 致谢
 
 - [goldendict-ng](https://github.com/xiaoyifang/goldendict-ng) — MDICT 解析器来源
-- [TauriCPP](https://github.com/nicereply/TauriCPP) (Lutra) — WebView2 桌面框架
+- [TauriCPP](https://gitee.com/masonwu21/tauri-cpp) (Lutra) — WebView2 桌面框架
 - [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) — 微软 WebView2
