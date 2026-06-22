@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoldenDict-Lite</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app">
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Enter word to search..." autocomplete="off">
+            <button id="searchBtn">Search</button>
+        </div>
+        <div class="suggest-dropdown" id="suggestDropdown"></div>
+        <div class="content-area" id="contentArea">
+            <div class="welcome">
+                <h2>GoldenDict-Lite</h2>
+                <p>Enter a word to search in the dictionary.</p>
+                <p id="dictInfo" class="dict-info"></p>
+            </div>
+        </div>
+        <div class="status-bar">
+            <span id="statusText">Ready</span>
+        </div>
+        <div class="dict-bar" id="dictBar"></div>
+    </div>
+    <script src="js/app.js"></script>
+</body>
+</html>
