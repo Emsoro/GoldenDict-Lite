@@ -1,10 +1,40 @@
 #include "dictionary_manager.hpp"
 #include "goldendict/mdictparser.hh"
+#include "goldendict/iconv.hh"
 #include <algorithm>
 #include <cstring>
 #include <cctype>
 #include <cstdio>
 #include <filesystem>
+#include <set>
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
+// Helper: open file with Chinese path support on Windows
+// Uses CP_ACP because std::filesystem::path::string() returns ANSI-encoded strings on Windows
+static FILE* openFileWide(const std::string& path, const char* mode) {
+#ifdef _WIN32
+  int wlen = MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, nullptr, 0);
+  if (wlen <= 0) return nullptr;
+  std::wstring wpath(wlen, 0);
+  MultiByteToWideChar(CP_ACP, 0, path.c_str(), -1, &wpath[0], wlen);
+  std::wstring wmode;
+  while (*mode) wmode += (wchar_t)*mode++;
+  return _wfopen(wpath.c_str(), wmode.c_str());
+#else
+  return fopen(path.c_str(), mode);
+#endif
+}
+
+// Helper: fseek with 64-bit offset on Windows
+static int fseek64(FILE* f, int64_t offset, int origin) {
+#ifdef _WIN32
+  return _fseeki64(f, offset, origin);
+#else
+  return fseeko(f, offset, origin);
+#endif
+}
 
 DictionaryManager::DictionaryManager() {}
 DictionaryManager::~DictionaryManager() { clear(); }
@@ -14,33 +44,66 @@ void DictionaryManager::clear() {
   dicts_.clear();
 }
 
-std::string DictionaryManager::loadDict(const char* mdxPath, DictEntry& entry) {
-  Mdict::MdictParser parser;
-  if (!parser.open(mdxPath)) return "MdictParser::open failed for: " + std::string(mdxPath);
+std::string DictionaryManager::getCachePath(const std::string& mdxPath) {
+  auto dotPos = mdxPath.rfind('.');
+  if (dotPos != std::string::npos)
+    return mdxPath.substr(0, dotPos) + ".cache.db";
+  return mdxPath + ".cache.db";
+}
 
-  entry.title = parser.title();
-  entry.description = parser.description();
-  entry.encoding = parser.encoding();
-  entry.wordCount = parser.wordCount();
+std::string DictionaryManager::loadDict(const char* mdxPath, DictEntry& entry) {
   entry.filePath = mdxPath;
 
-  // Read ALL headwords
-  Mdict::MdictParser::HeadWordIndex block;
-  while (parser.readNextHeadWordIndex(block)) {
-    for (auto& hw : block) {
-      DictEntry::HeadWord h;
-      h.id = hw.first;
-      h.word = hw.second;
-      entry.headwords.push_back(std::move(h));
+  std::string cachePath = getCachePath(mdxPath);
+
+  int64_t mdxFileSize = 0;
+  try { mdxFileSize = (int64_t)std::filesystem::file_size(mdxPath); }
+  catch (...) { return "Cannot stat file: " + std::string(mdxPath); }
+
+  entry.cache = std::make_unique<DictCache>();
+  entry.cache->open(cachePath.c_str(), mdxFileSize);
+
+  if (entry.cache->isValid()) {
+    entry.title = Iconv::ensureUtf8(entry.cache->loadMeta("title"));
+    entry.description = Iconv::ensureUtf8(entry.cache->loadMeta("description"));
+    entry.encoding = entry.cache->loadMeta("encoding");
+    entry.wordCount = (uint32_t)strtoll(entry.cache->loadMeta("word_count").c_str(), nullptr, 10);
+    entry.recordPos = entry.cache->loadRecordPos();
+    entry.styleSheets = entry.cache->loadStyleSheets();
+  } else {
+    Mdict::MdictParser parser;
+    if (!parser.open(mdxPath)) return "MdictParser::open failed for: " + std::string(mdxPath);
+
+    entry.title = Iconv::ensureUtf8(parser.title());
+    entry.description = Iconv::ensureUtf8(parser.description());
+    entry.encoding = parser.encoding();
+    entry.wordCount = parser.wordCount();
+
+    std::vector<DictCache::CachedHeadWord> headwords;
+    Mdict::MdictParser::HeadWordIndex block;
+    while (parser.readNextHeadWordIndex(block)) {
+      for (auto& hw : block)
+        headwords.push_back({hw.first, hw.second});
+      block.clear();
     }
-    block.clear();
+
+    auto& parserBlocks = parser.getRecordBlockInfos();
+    entry.recordPos = parser.getRecordPos();
+
+    std::vector<DictCache::CachedRecordBlock> cachedBlocks;
+    cachedBlocks.reserve(parserBlocks.size());
+    for (auto& rb : parserBlocks)
+      cachedBlocks.push_back({rb.startPos, rb.endPos, rb.shadowStartPos, rb.shadowEndPos,
+                              rb.compressedSize, rb.decompressedSize});
+
+    entry.cache->close();
+    entry.cache->open(cachePath.c_str(), mdxFileSize);
+    entry.cache->saveIndex(entry.title, entry.description, entry.encoding,
+                           entry.wordCount, entry.recordPos, headwords, cachedBlocks,
+                           parser.styleSheets());
+    entry.styleSheets = parser.styleSheets();
   }
 
-  // Cache record block info (small: ~1.3MB per dict)
-  entry.recordBlockInfos = parser.getRecordBlockInfos();
-  entry.recordPos = parser.getRecordPos();
-
-  // Load CSS from same directory
   std::string dir(mdxPath);
   std::string baseName;
   auto pos = dir.find_last_of("/\\");
@@ -51,39 +114,113 @@ std::string DictionaryManager::loadDict(const char* mdxPath, DictEntry& entry) {
   auto dotPos = baseName.rfind('.');
   if (dotPos != std::string::npos) baseName = baseName.substr(0, dotPos);
   std::string cssPath = dir + baseName + ".css";
-  FILE* cssFile = fopen(cssPath.c_str(), "rb");
+  FILE* cssFile = openFileWide(cssPath, "rb");
   if (cssFile) {
-    fseek(cssFile, 0, SEEK_END);
+    fseek64(cssFile, 0, SEEK_END);
     long cssSize = ftell(cssFile);
-    fseek(cssFile, 0, SEEK_SET);
+    fseek64(cssFile, 0, SEEK_SET);
     entry.cssContent.resize(cssSize);
     fread(&entry.cssContent[0], 1, cssSize, cssFile);
     fclose(cssFile);
   }
 
-  // Load icon PNG as base64
   entry.iconBase64 = loadIconBase64(mdxPath);
   entry.dictName = entry.title;
+
+  // Load MDD resource files (main + multi-volume: .mdd, .1.mdd, .2.mdd, ...)
+  try {
+    std::string basePath = mdxPath;
+    auto dp = basePath.rfind('.');
+    if (dp != std::string::npos) basePath = basePath.substr(0, dp);
+
+    // Collect all MDD file paths: main .mdd, then .1.mdd, .2.mdd, etc.
+    std::vector<std::string> mddPaths;
+    std::string mainMdd = basePath + ".mdd";
+    if (std::filesystem::exists(mainMdd))
+      mddPaths.push_back(mainMdd);
+    for (int i = 1; i <= 20; i++) {
+      std::string volMdd = basePath + "." + std::to_string(i) + ".mdd";
+      if (std::filesystem::exists(volMdd))
+        mddPaths.push_back(volMdd);
+      else
+        break;
+    }
+
+    for (auto& mddPath : mddPaths) {
+      int64_t mddFileSize = 0;
+      try { mddFileSize = (int64_t)std::filesystem::file_size(mddPath); }
+      catch (...) { mddFileSize = 0; }
+      if (mddFileSize == 0) continue;
+
+      // Generate unique cache path for each MDD volume
+      std::string mddCachePath = getCachePath(mddPath);
+      {
+        auto mddDot = mddCachePath.rfind('.');
+        if (mddDot != std::string::npos)
+          mddCachePath = mddCachePath.substr(0, mddDot) + ".mdd.cache.db";
+        else
+          mddCachePath += ".mdd";
+      }
+
+      DictEntry::MddVolume vol;
+      vol.filePath = mddPath;
+      vol.cache = std::make_unique<DictCache>();
+      vol.cache->open(mddCachePath.c_str(), mddFileSize);
+
+      if (!vol.cache->isValid()) {
+        Mdict::MdictParser mddParser;
+        if (mddParser.open(mddPath.c_str())) {
+          std::vector<DictCache::CachedHeadWord> mddHeadwords;
+          Mdict::MdictParser::HeadWordIndex block;
+          while (mddParser.readNextHeadWordIndex(block)) {
+            for (auto& hw : block)
+              mddHeadwords.push_back({hw.first, hw.second});
+            block.clear();
+          }
+
+          auto& mddBlocks = mddParser.getRecordBlockInfos();
+          vol.recordPos = mddParser.getRecordPos();
+
+          std::vector<DictCache::CachedRecordBlock> cachedBlocks;
+          cachedBlocks.reserve(mddBlocks.size());
+          for (auto& rb : mddBlocks)
+            cachedBlocks.push_back({rb.startPos, rb.endPos, rb.shadowStartPos, rb.shadowEndPos,
+                                    rb.compressedSize, rb.decompressedSize});
+
+          vol.cache->close();
+          vol.cache->open(mddCachePath.c_str(), mddFileSize);
+          vol.cache->saveIndex(mddParser.title(), mddParser.description(), mddParser.encoding(),
+                               mddParser.wordCount(), vol.recordPos, mddHeadwords, cachedBlocks,
+                               mddParser.styleSheets());
+        }
+      } else {
+        vol.recordPos = vol.cache->loadRecordPos();
+      }
+
+      entry.mddVolumes.push_back(std::move(vol));
+    }
+  } catch (...) {
+    // MDD loading failed - continue without MDD resources
+    entry.mddVolumes.clear();
+  }
 
   return "";
 }
 
 std::string DictionaryManager::loadIconBase64(const std::string& mdxPath) {
-  // Find PNG with same base name
   std::string pngPath = mdxPath;
   auto dotPos = pngPath.rfind('.');
   if (dotPos != std::string::npos) pngPath = pngPath.substr(0, dotPos);
   pngPath += ".png";
-  FILE* f = fopen(pngPath.c_str(), "rb");
+  FILE* f = openFileWide(pngPath, "rb");
   if (!f) return "";
-  fseek(f, 0, SEEK_END);
+  fseek64(f, 0, SEEK_END);
   long sz = ftell(f);
-  fseek(f, 0, SEEK_SET);
+  fseek64(f, 0, SEEK_SET);
   if (sz <= 0 || sz > 500000) { fclose(f); return ""; }
   std::vector<unsigned char> data(sz);
   fread(data.data(), 1, sz, f);
   fclose(f);
-  // Convert to base64
   static const char tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   std::string result;
   result.reserve(((sz + 2) / 3) * 4);
@@ -112,40 +249,124 @@ std::string DictionaryManager::loadDictionaryEx(const char* mdxPath) {
   return "";
 }
 
+// Get the path for the dict order file (next to the exe)
+static std::string getDictOrderFilePath() {
+  char exePath[MAX_PATH] = {};
+  GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+  std::string dir(exePath);
+  auto pos = dir.rfind('\\');
+  if (pos != std::string::npos) dir = dir.substr(0, pos);
+  return dir + "\\dict_order.json";
+}
+
 size_t DictionaryManager::loadDictionaryDir(const char* dirPath) {
   std::lock_guard<std::mutex> lock(mutex_);
-  size_t loaded = 0;
+
+  // Skip if directory doesn't exist
   try {
-    for (auto& entry : std::filesystem::directory_iterator(dirPath)) {
+    if (!std::filesystem::exists(dirPath)) return 0;
+  } catch (...) {
+    return 0;
+  }
+
+  size_t loaded = 0;
+
+  std::vector<std::string> mdxFiles;
+  try {
+    for (auto& entry : std::filesystem::recursive_directory_iterator(dirPath)) {
       if (entry.is_regular_file()) {
         auto& p = entry.path();
         if (p.extension() == ".mdx" || p.extension() == ".MDX") {
-          DictEntry dictEntry;
-          std::string error = loadDict(p.string().c_str(), dictEntry);
-          if (error.empty()) {
-            dicts_.push_back(std::move(dictEntry));
-            loaded++;
-          }
+          mdxFiles.push_back(p.string());
         }
       }
     }
   } catch (...) {}
+
+  for (size_t i = 0; i < mdxFiles.size(); i++) {
+    std::string baseName = mdxFiles[i];
+    auto slashPos = baseName.find_last_of("/\\");
+    if (slashPos != std::string::npos) baseName = baseName.substr(slashPos + 1);
+    auto dotPos = baseName.rfind('.');
+    if (dotPos != std::string::npos) baseName = baseName.substr(0, dotPos);
+
+    std::string cachePath = getCachePath(mdxFiles[i]);
+    bool cached = false;
+    try {
+      int64_t mdxSize = (int64_t)std::filesystem::file_size(mdxFiles[i]);
+      cached = std::filesystem::exists(cachePath);
+      if (cached) {
+        DictCache probe;
+        probe.open(cachePath.c_str(), mdxSize);
+        cached = probe.isValid();
+      }
+    } catch (...) {}
+
+    if (progressCallback_) {
+      progressDict_ = baseName;
+      progressCurrent_ = i + 1;
+      progressTotal_ = mdxFiles.size();
+      progressCached_ = cached;
+      progressCallback_(baseName, i + 1, mdxFiles.size(), cached);
+    }
+
+    DictEntry dictEntry;
+    std::string error = loadDict(mdxFiles[i].c_str(), dictEntry);
+    if (error.empty()) {
+      dicts_.push_back(std::move(dictEntry));
+      loaded++;
+    }
+  }
+
   return loaded;
+}
+
+void DictionaryManager::finalizeLoading() {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  // Load saved dict order from file
+  try {
+    std::string orderPath = getDictOrderFilePath();
+    FILE* f = openFileWide(orderPath, "r");
+    if (f) {
+      std::string content;
+      fseek64(f, 0, SEEK_END);
+      auto sz = _ftelli64(f);
+      fseek64(f, 0, SEEK_SET);
+      content.resize((size_t)sz);
+      fread(content.data(), 1, content.size(), f);
+      fclose(f);
+      auto j = nlohmann::json::parse(content, nullptr, false);
+      if (j.is_array()) {
+        dictOrder_.clear();
+        for (auto& item : j) {
+          if (item.is_string())
+            dictOrder_.push_back(item.get<std::string>());
+        }
+      }
+    }
+  } catch (...) {}
+
+  // If dict order doesn't match current dicts, update it
+  if (dictOrder_.empty() || dictOrder_.size() != dicts_.size()) {
+    dictOrder_.clear();
+    for (auto& d : dicts_) dictOrder_.push_back(d.title);
+  }
 }
 
 std::vector<std::string> DictionaryManager::prefixMatch(const std::string& prefix, size_t maxResults) {
   std::lock_guard<std::mutex> lock(mutex_);
   std::vector<std::string> results;
   std::string lowerPrefix = prefix;
-  std::transform(lowerPrefix.begin(), lowerPrefix.end(), lowerPrefix.begin(), ::tolower);
+  std::transform(lowerPrefix.begin(), lowerPrefix.end(), lowerPrefix.begin(),
+    [](unsigned char c) { return std::tolower(c); });
   for (auto& dict : dicts_) {
-    for (auto& hw : dict.headwords) {
-      if (results.size() >= maxResults) break;
-      std::string lowerWord = hw.word;
-      std::transform(lowerWord.begin(), lowerWord.end(), lowerWord.begin(), ::tolower);
-      if (lowerWord.compare(0, lowerPrefix.size(), lowerPrefix) == 0) {
-        if (std::find(results.begin(), results.end(), hw.word) == results.end())
-          results.push_back(hw.word);
+    if (dict.cache && dict.cache->isValid()) {
+      auto words = dict.cache->prefixMatchWords(lowerPrefix, maxResults - results.size());
+      for (auto& w : words) {
+        if (results.size() >= maxResults) break;
+        if (std::find(results.begin(), results.end(), w) == results.end())
+          results.push_back(std::move(w));
       }
     }
   }
@@ -157,66 +378,111 @@ std::string DictionaryManager::lookup(const std::string& word) {
   std::string allResults;
   int matchCount = 0;
 
-  for (size_t di = 0; di < dicts_.size(); di++) {
-    auto& dict = dicts_[di];
+  for (auto& dict : dicts_) {
+    if (!dict.cache || !dict.cache->isValid()) continue;
 
-    int64_t targetId = -1;
-    for (auto& hw : dict.headwords) {
-      if (hw.word == word) { targetId = hw.id; break; }
-    }
-    if (targetId < 0) continue;
+    try {
+      DictCache::RecordLookup rl;
+      if (!dict.cache->lookupRecord(word, dict.recordPos, rl)) continue;
 
-    Mdict::MdictParser parser;
-    if (!parser.open(dict.filePath.c_str())) continue;
-    Mdict::MdictParser::HeadWordIndex dummy;
-    while (parser.readNextHeadWordIndex(dummy)) dummy.clear();
+      // Open MDX and read just the one compressed block
+      FILE* f = openFileWide(dict.filePath, "rb");
+      if (!f) continue;
+      fseek64(f, rl.compressedBlockPos, SEEK_SET);
+      std::vector<char> compressedData(rl.compressedBlockSize);
+      size_t bytesRead = fread(compressedData.data(), 1, rl.compressedBlockSize, f);
+      fclose(f);
+      if ((int64_t)bytesRead != rl.compressedBlockSize) continue;
 
-    Mdict::MdictParser::HeadWordIndex fullIndex;
-    fullIndex.reserve(dict.headwords.size());
-    for (auto& hw : dict.headwords)
-      fullIndex.emplace_back(hw.id, hw.word);
+      std::vector<char> decompressed;
+      if (!Mdict::MdictParser::parseCompressedBlock(rl.compressedBlockSize, compressedData.data(),
+          rl.decompressedBlockSize, decompressed)) continue;
 
-    struct ArticleHandler : public Mdict::MdictParser::RecordHandler {
-      const std::string& targetWord;
-      std::string& result;
-      const std::string& filePath;
-      bool found;
-      ArticleHandler(const std::string& w, std::string& r, const std::string& fp)
-        : targetWord(w), result(r), filePath(fp), found(false) {}
-      void handleRecord(const std::string& name, const Mdict::MdictParser::RecordInfo& info) override {
-        if (found) return;
-        if (name == targetWord) {
-          found = true;
-          FILE* f = fopen(filePath.c_str(), "rb");
-          if (!f) return;
-          fseek(f, info.compressedBlockPos, SEEK_SET);
-          std::vector<char> compressedData(info.compressedBlockSize);
-          size_t bytesRead = fread(compressedData.data(), 1, info.compressedBlockSize, f);
-          fclose(f);
-          if (bytesRead != (size_t)info.compressedBlockSize) return;
-          std::vector<char> decompressed;
-          if (!Mdict::MdictParser::parseCompressedBlock(info.compressedBlockSize, compressedData.data(),
-              info.decompressedBlockSize, decompressed)) return;
-          if (info.recordOffset >= 0 && info.recordOffset < (int64_t)decompressed.size()) {
-            size_t len = (size_t)info.recordSize;
-            size_t avail = decompressed.size() - (size_t)info.recordOffset;
-            if (len > avail) len = avail;
-            result = std::string(decompressed.data() + info.recordOffset, len);
+      std::string article;
+      if (rl.recordOffset >= 0 && rl.recordOffset < (int64_t)decompressed.size()) {
+        size_t len = (size_t)rl.recordSize;
+        size_t avail = decompressed.size() - (size_t)rl.recordOffset;
+        if (len > avail) len = avail;
+        article.assign(decompressed.data() + rl.recordOffset, len);
+      }
+      if (article.empty()) continue;
+
+      if (dict.encoding != "UTF-8" && dict.encoding != "UTF8")
+        article = Iconv::toUtf8(dict.encoding.c_str(), article.data(), article.size());
+
+      // Ensure article is valid UTF-8 (handles MDX with wrong encoding header, e.g. header says UTF-8 but content is GBK)
+      article = Iconv::ensureUtf8(article);
+
+      if (!dict.styleSheets.empty())
+        Mdict::MdictParser::substituteStylesheet(article, dict.styleSheets);
+
+      // Replace sound:// links with clickable audio links
+      // Pattern: href="sound://resource_path" → href="#" data-dict="title" data-sound="resource_path"
+      // Also handles href='sound://...' by converting to double-quoted attributes
+      {
+        static const std::string soundPrefix = "sound://";
+        size_t pos = 0;
+        while ((pos = article.find(soundPrefix, pos)) != std::string::npos) {
+          // Find end of URL (stop at quote, angle bracket, or whitespace)
+          size_t urlStart = pos + soundPrefix.size();
+          size_t urlEnd = urlStart;
+          while (urlEnd < article.size()) {
+            char c = article[urlEnd];
+            if (c == '"' || c == '\'' || c == '<' || c == '>' || c == ' ' || c == '\t' || c == '\n' || c == '\r')
+              break;
+            urlEnd++;
+          }
+          std::string soundUrl = article.substr(urlStart, urlEnd - urlStart);
+          if (soundUrl.empty()) { pos = urlEnd; continue; }
+
+          // Escape dict title for HTML attribute (replace " with &quot;)
+          std::string escapedTitle = dict.title;
+          for (size_t i = 0; i < escapedTitle.size(); i++)
+            if (escapedTitle[i] == '"') { escapedTitle.replace(i, 1, "&quot;"); i += 4; }
+
+          // Escape soundUrl for HTML attribute
+          std::string escapedUrl = soundUrl;
+          for (size_t i = 0; i < escapedUrl.size(); i++)
+            if (escapedUrl[i] == '"') { escapedUrl.replace(i, 1, "&quot;"); i += 4; }
+
+          // Determine if the href uses single or double quotes
+          char quoteChar = '"';
+          size_t hrefPos = article.rfind("href", pos);
+          if (hrefPos != std::string::npos && hrefPos + 4 < pos) {
+            for (size_t i = hrefPos + 4; i < pos; i++) {
+              if (article[i] == '"' || article[i] == '\'') {
+                quoteChar = article[i];
+                break;
+              }
+            }
+          }
+
+          if (quoteChar == '\'') {
+            // Single-quoted href: replace from opening ' to closing '
+            // href='sound://url' → href="#" data-dict="..." data-sound="url"
+            // Find the opening quote position (the ' after =)
+            size_t openQuote = pos;
+            if (hrefPos != std::string::npos) {
+              size_t eqPos = article.find('=', hrefPos);
+              if (eqPos != std::string::npos && eqPos + 1 < pos)
+                openQuote = eqPos + 1;
+            }
+            // Replace from openQuote to urlEnd (includes both quotes and the URL)
+            std::string replacement = "\"#\" data-dict=\"" + escapedTitle + "\" data-sound=\"" + escapedUrl + "\"";
+            article.replace(openQuote, urlEnd - openQuote + 1, replacement);
+            pos = openQuote + replacement.size();
+          } else {
+            // Double-quoted href: href="sound://url" → href="#" data-dict="..." data-sound="url"
+            // Replace just sound://url with #url" data-dict="..." data-sound="url
+            std::string replacement = "#" + escapedUrl + "\" data-dict=\"" + escapedTitle + "\" data-sound=\"" + escapedUrl;
+            article.replace(pos, soundPrefix.size() + soundUrl.size(), replacement);
+            pos += replacement.size();
           }
         }
       }
-    };
 
-    std::string article;
-    ArticleHandler handler(word, article, dict.filePath);
-    parser.readRecordBlock(fullIndex, handler);
-
-    if (!article.empty()) {
-      auto& stylesheets = parser.styleSheets();
-      if (!stylesheets.empty())
-        Mdict::MdictParser::substituteStylesheet(article, stylesheets);
       matchCount++;
-      allResults += "<div class=\"dict-section\">";
+      allResults += "<div class=\"dict-section\" data-dict=\"" + dict.title + "\">";
       std::string nameHtml;
       if (!dict.iconBase64.empty())
         nameHtml += "<img class=\"dict-icon\" src=\"" + dict.iconBase64 + "\">";
@@ -224,6 +490,11 @@ std::string DictionaryManager::lookup(const std::string& word) {
       allResults += "<div class=\"dict-name\">" + nameHtml + "</div>";
       allResults += "<div class=\"dict-article\"><style>" + dict.cssContent + "</style>" + article + "</div>";
       allResults += "</div>";
+    } catch (const std::exception& e) {
+      // Skip this dictionary on error, continue with others
+      continue;
+    } catch (...) {
+      continue;
     }
   }
 
@@ -247,7 +518,7 @@ std::string DictionaryManager::getDescription() const {
 size_t DictionaryManager::getWordCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
   size_t total = 0;
-  for (auto& dict : dicts_) total += dict.headwords.size();
+  for (auto& dict : dicts_) total += dict.wordCount;
   return total;
 }
 
@@ -259,12 +530,176 @@ size_t DictionaryManager::getDictCount() const {
 nlohmann::json DictionaryManager::getDictList() const {
   std::lock_guard<std::mutex> lock(mutex_);
   nlohmann::json list = nlohmann::json::array();
-  for (auto& dict : dicts_) {
-    list.push_back({
-      {"name", dict.title},
-      {"icon", dict.iconBase64},
-      {"word_count", dict.headwords.size()}
-    });
+
+  auto addDict = [&](const DictEntry& dict) {
+    std::string title = Iconv::ensureUtf8(dict.title);
+    list.push_back({{"name", title}, {"icon", dict.iconBase64}, {"word_count", dict.wordCount}});
+  };
+
+  // If we have a saved order, output in that order
+  if (!dictOrder_.empty()) {
+    std::set<std::string> added;
+    for (auto& name : dictOrder_) {
+      for (auto& dict : dicts_) {
+        if (dict.title == name && added.find(name) == added.end()) {
+          addDict(dict);
+          added.insert(name);
+          break;
+        }
+      }
+    }
+    // Add any not in order
+    for (auto& dict : dicts_) {
+      if (added.find(dict.title) == added.end()) {
+        addDict(dict);
+      }
+    }
+  } else {
+    for (auto& dict : dicts_) {
+      addDict(dict);
+    }
   }
   return list;
+}
+
+
+void DictionaryManager::setDictOrder(const std::vector<std::string>& order) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  dictOrder_ = order;
+
+  // Save to file
+  try {
+    nlohmann::json j = order;
+    std::string content = j.dump(2);
+    std::string path = getDictOrderFilePath();
+    FILE* f = openFileWide(path, "w");
+    if (f) {
+      fwrite(content.c_str(), 1, content.size(), f);
+      fclose(f);
+    }
+  } catch (...) {}
+}
+
+std::vector<std::string> DictionaryManager::getDictOrder() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return dictOrder_;
+}
+
+std::string DictionaryManager::lookupResource(const std::string& dictTitle, const std::string& resourcePath) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  for (auto& dict : dicts_) {
+    if (dict.title != dictTitle) continue;
+    if (dict.mddVolumes.empty()) continue;
+
+    // Try multiple path variations to match MDD headword format
+    std::vector<std::string> pathVariations;
+
+    // 1. Normalize: convert forward slash to backslash, ensure leading backslash
+    std::string normalized = resourcePath;
+    for (size_t i = 0; i < normalized.size(); i++)
+      if (normalized[i] == '/') normalized[i] = '\\';
+    if (!normalized.empty() && normalized[0] != '\\')
+      normalized = "\\" + normalized;
+    pathVariations.push_back(normalized);
+
+    // 2. Without leading backslash
+    if (normalized.size() > 1)
+      pathVariations.push_back(normalized.substr(1));
+
+    // 3. With forward slashes and leading /
+    std::string fwdSlash = resourcePath;
+    for (size_t i = 0; i < fwdSlash.size(); i++)
+      if (fwdSlash[i] == '\\') fwdSlash[i] = '/';
+    if (!fwdSlash.empty() && fwdSlash[0] != '/')
+      fwdSlash = "/" + fwdSlash;
+    pathVariations.push_back(fwdSlash);
+
+    // 4. Without leading /
+    if (fwdSlash.size() > 1)
+      pathVariations.push_back(fwdSlash.substr(1));
+
+    // 5. Original as-is
+    pathVariations.push_back(resourcePath);
+
+    // Search all MDD volumes
+    for (auto& vol : dict.mddVolumes) {
+      if (!vol.cache || !vol.cache->isValid()) continue;
+
+      try {
+        // Try exact match with path variations
+        for (auto& pathVar : pathVariations) {
+          DictCache::RecordLookup rl;
+          if (vol.cache->lookupRecord(pathVar, vol.recordPos, rl)) {
+            std::string result = readResourceFromVolume(vol, rl);
+            if (!result.empty()) return result;
+          }
+        }
+
+        // Fallback: fuzzy search by filename
+        DictCache::RecordLookup rl;
+        if (vol.cache->lookupRecordLike(resourcePath, vol.recordPos, rl)) {
+          std::string result = readResourceFromVolume(vol, rl);
+          if (!result.empty()) return result;
+        }
+      } catch (...) {
+        continue;
+      }
+    }
+  }
+  return "";
+}
+
+std::string DictionaryManager::readResourceFromVolume(const DictEntry::MddVolume& vol, const DictCache::RecordLookup& rl) {
+  FILE* f = openFileWide(vol.filePath, "rb");
+  if (!f) return "";
+  fseek64(f, rl.compressedBlockPos, SEEK_SET);
+  std::vector<char> compressedData(rl.compressedBlockSize);
+  size_t bytesRead = fread(compressedData.data(), 1, rl.compressedBlockSize, f);
+  fclose(f);
+  if ((int64_t)bytesRead != rl.compressedBlockSize) return "";
+
+  std::vector<char> decompressed;
+  if (!Mdict::MdictParser::parseCompressedBlock(rl.compressedBlockSize, compressedData.data(),
+      rl.decompressedBlockSize, decompressed)) return "";
+
+  std::string data;
+  if (rl.recordOffset >= 0 && rl.recordOffset < (int64_t)decompressed.size()) {
+    size_t len = (size_t)rl.recordSize;
+    size_t avail = decompressed.size() - (size_t)rl.recordOffset;
+    if (len > avail) len = avail;
+    data.assign(decompressed.data() + rl.recordOffset, len);
+  }
+  if (data.empty()) return "";
+
+  // Return as base64
+  static const char tbl[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  std::string result;
+  size_t sz = data.size();
+  result.reserve(((sz + 2) / 3) * 4);
+  for (size_t i = 0; i < sz; i += 3) {
+    unsigned int n = ((unsigned int)(unsigned char)data[i]) << 16;
+    if (i + 1 < sz) n |= ((unsigned int)(unsigned char)data[i + 1]) << 8;
+    if (i + 2 < sz) n |= ((unsigned int)(unsigned char)data[i + 2]);
+    result += tbl[(n >> 18) & 0x3F];
+    result += tbl[(n >> 12) & 0x3F];
+    result += (i + 1 < sz) ? tbl[(n >> 6) & 0x3F] : '=';
+    result += (i + 2 < sz) ? tbl[n & 0x3F] : '=';
+  }
+  return result;
+}
+
+std::vector<std::string> DictionaryManager::searchMddHeadwords(const std::string& dictTitle, const std::string& pattern) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (auto& dict : dicts_) {
+    if (dict.title != dictTitle) continue;
+    std::vector<std::string> results;
+    for (auto& vol : dict.mddVolumes) {
+      if (!vol.cache || !vol.cache->isValid()) continue;
+      auto volResults = vol.cache->searchHeadwords(pattern);
+      results.insert(results.end(), volResults.begin(), volResults.end());
+    }
+    return results;
+  }
+  return {};
 }

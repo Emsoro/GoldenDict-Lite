@@ -21,6 +21,10 @@ public:
   static std::u32string toWstring(const char* fromEncoding, const void* fromData, size_t dataSize);
   static std::string toUtf8(const char* fromEncoding, const void* fromData, size_t dataSize);
   static std::string toQString(const char* fromEncoding, const void* fromData, size_t dataSize);
+  // Check if a string is valid UTF-8
+  static bool isValidUtf8(const std::string& s);
+  // Ensure a string is valid UTF-8: if not, try GBK fallback; sanitize remaining invalid bytes
+  static std::string ensureUtf8(const std::string& s);
   Iconv(const Iconv&) = delete;
   Iconv& operator=(const Iconv&) = delete;
 private:

@@ -1,9 +1,11 @@
 cmake_minimum_required(VERSION 3.15)
-project(GoldenDictLite VERSION 0.1.0 LANGUAGES CXX)
+project(GoldenDictLite VERSION 1.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Use static CRT to match static zlib (no DLL dependencies)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(MSVC)
     add_compile_options(/utf-8)
 endif()
@@ -50,22 +52,11 @@ if(NOT WEBVIEW2_INCLUDE_DIR)
     )
 endif()
 
-# Find zlib (static)
-find_library(ZLIB_STATIC_LIBRARY NAMES zlibstatic zlib)
-if(ZLIB_STATIC_LIBRARY)
-    set(ZLIB_LIBRARIES ${ZLIB_STATIC_LIBRARY})
-else()
-    find_package(ZLIB REQUIRED)
-    set(ZLIB_LIBRARIES ZLIB::ZLIB)
-endif()
-find_path(ZLIB_INCLUDE_DIR zlib.h
-    PATHS
-        "$ENV{VCPKG_ROOT}/installed/x64-windows-static/include"
-        "C:/vcpkg/installed/x64-windows-static/include"
-        "$ENV{VCPKG_ROOT}/installed/x64-windows/include"
-        "C:/vcpkg/installed/x64-windows/include"
-)
-message(STATUS "ZLIB static library: ${ZLIB_LIBRARIES}")
+# Find zlib (static) - use vcpkg static triplet
+set(ZLIB_USE_STATIC_LIBS ON)
+find_package(ZLIB REQUIRED)
+message(STATUS "ZLIB libraries: ${ZLIB_LIBRARIES}")
+message(STATUS "ZLIB include: ${ZLIB_INCLUDE_DIR}")
 
 # ============================================================================
 # TauriCPP static library
@@ -96,6 +87,21 @@ target_link_libraries(tauricpp PUBLIC
 )
 
 # ============================================================================
+# SQLite3 (amalgamation, static)
+# ============================================================================
+add_library(sqlite3 STATIC
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3/sqlite3.c
+)
+set_target_properties(sqlite3 PROPERTIES LINKER_LANGUAGE C)
+target_include_directories(sqlite3 PUBLIC
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3
+)
+target_compile_definitions(sqlite3 PRIVATE SQLITE_THREADSAFE=0)
+if(MSVC)
+    target_compile_options(sqlite3 PRIVATE /W0)
+endif()
+
+# ============================================================================
 # GoldenDict parsing library
 # ============================================================================
 add_library(goldendict_parse STATIC
@@ -106,6 +112,7 @@ add_library(goldendict_parse STATIC
     src/goldendict/ripemd.cc
     src/goldendict/text.cc
     src/goldendict/filetype.cc
+    src/dict_cache.cpp
     src/dictionary_manager.cpp
 )
 
@@ -118,6 +125,7 @@ target_include_directories(goldendict_parse PUBLIC
 
 target_link_libraries(goldendict_parse PUBLIC
     ${ZLIB_LIBRARIES}
+    sqlite3
 )
 
 # ============================================================================
@@ -193,3 +201,30 @@ add_custom_target(pack_resources
     DEPENDS "${RESOURCES_RC}" "${RESOURCE_MAP_CPP}"
     COMMENT "Pack frontend resources"
 )
+
+# ============================================================================
+# Unit Tests
+# ============================================================================
+add_executable(test_bugfixes
+    tests/test_bugfixes.cpp
+)
+
+target_include_directories(test_bugfixes PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/goldendict
+    ${NLOHMANN_JSON_DIR}/..
+    ${CMAKE_SOURCE_DIR}/third_party/sqlite3
+)
+
+target_link_libraries(test_bugfixes PRIVATE
+    goldendict_parse
+    sqlite3
+)
+
+if(MSVC)
+    target_compile_options(test_bugfixes PRIVATE /utf-8)
+endif()
+
+# Enable testing
+enable_testing()
+add_test(NAME BugfixTests COMMAND test_bugfixes)

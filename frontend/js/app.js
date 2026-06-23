@@ -9,15 +9,32 @@ let searchTimer = null;
 let currentFocus = -1;
 let isSearching = false;
 let dictBarLoaded = false;
+let dictOrder = []; // store dict names in order
+
+// Dict order is now persisted by C++ backend (dict_order.json file)
+
+// ============================================================================
+// Dictionary info & bar
+// ============================================================================
 
 // Load dictionary info
 async function loadDictInfo() {
     try {
         const info = await __tauricpp__.invoke('dict_info', {});
+        if (info.error) {
+            dictInfo.textContent = 'Error: ' + info.error;
+            statusText.textContent = 'Error';
+            return;
+        }
         if (info.loaded) {
             dictInfo.textContent = `${info.dict_count} dictionaries, ${info.word_count.toLocaleString()} words`;
             statusText.textContent = `Ready - ${info.dict_count} dictionaries (${info.word_count.toLocaleString()} words)`;
             if (!dictBarLoaded) loadDictBar();
+        } else if (info.progress_total > 0) {
+            const cached = info.progress_cached ? '' : ' (indexing...)';
+            dictInfo.textContent = `Loading ${info.progress_current}/${info.progress_total}: ${info.progress_dict}${cached}`;
+            statusText.textContent = `Loading dictionaries ${info.progress_current}/${info.progress_total}${cached}`;
+            setTimeout(loadDictInfo, 300);
         } else {
             dictInfo.textContent = 'Loading dictionaries...';
             statusText.textContent = 'Loading dictionaries...';
@@ -32,23 +49,155 @@ async function loadDictInfo() {
 async function loadDictBar() {
     try {
         const list = await __tauricpp__.invoke('dict_list', {});
+        if (!Array.isArray(list)) return;
         const bar = document.getElementById('dictBar');
+        if (!bar) return;
         bar.innerHTML = '';
+
+        // dict_list already returns items in saved order (C++ handles persistence)
+        dictOrder = list.map(d => d.name);
+
         list.forEach(d => {
-            const item = document.createElement('div');
-            item.className = 'dict-bar-item';
-            if (d.icon) {
-                const img = document.createElement('img');
-                img.src = d.icon;
-                item.appendChild(img);
-            }
-            const span = document.createElement('span');
-            span.textContent = d.name + ' (' + d.word_count.toLocaleString() + ')';
-            item.appendChild(span);
+            const item = createDictBarItem(d);
             bar.appendChild(item);
         });
+
         dictBarLoaded = true;
     } catch (e) {}
+}
+
+function createDictBarItem(d) {
+    const item = document.createElement('div');
+    item.className = 'dict-bar-item';
+    item.draggable = true;
+    item.dataset.name = d.name;
+    if (d.icon) {
+        const img = document.createElement('img');
+        img.src = d.icon;
+        item.appendChild(img);
+    }
+    const span = document.createElement('span');
+    span.textContent = d.name + ' (' + d.word_count.toLocaleString() + ')';
+    item.appendChild(span);
+
+    // Drag events
+    item.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', d.name);
+        e.dataTransfer.effectAllowed = 'move';
+        item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => {
+        item.classList.remove('dragging');
+        document.querySelectorAll('.dict-bar-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const dragging = document.querySelector('.dict-bar-item.dragging');
+        if (dragging && dragging !== item) {
+            item.classList.add('drag-over');
+        }
+    });
+    item.addEventListener('dragleave', () => {
+        item.classList.remove('drag-over');
+    });
+    item.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        item.classList.remove('drag-over');
+        const draggedName = e.dataTransfer.getData('text/plain');
+        if (draggedName === d.name) return;
+
+        const bar = document.getElementById('dictBar');
+        const items = [...bar.children];
+        const draggedIdx = items.findIndex(el => el.dataset.name === draggedName);
+        const targetIdx = items.findIndex(el => el.dataset.name === d.name);
+        if (draggedIdx < 0 || targetIdx < 0) return;
+
+        const draggedEl = items[draggedIdx];
+        if (draggedIdx < targetIdx) {
+            bar.insertBefore(draggedEl, items[targetIdx].nextSibling);
+        } else {
+            bar.insertBefore(draggedEl, items[targetIdx]);
+        }
+        // Update dictOrder and persist to C++ backend
+        dictOrder = [...bar.children].map(el => el.dataset.name);
+        try {
+            await __tauricpp__.invoke('set_dict_order', { order: dictOrder });
+        } catch (e) {}
+    });
+    return item;
+}
+
+// ============================================================================
+// Audio playback from MDD resources
+// ============================================================================
+
+// Make playAudio available globally for onclick handlers in article HTML
+window.playAudio = async function(dictTitle, resourcePath) {
+    console.log('playAudio called:', dictTitle, resourcePath);
+    try {
+        const result = await __tauricpp__.invoke('resource', { dict: dictTitle, path: resourcePath });
+        console.log('resource result:', result.error ? 'error: ' + result.error : 'data length=' + (result.data || '').length);
+        if (result.error || !result.data) {
+            console.warn('playAudio: resource not found', dictTitle, resourcePath, result.error);
+            return;
+        }
+
+        // Determine MIME type from extension
+        const ext = resourcePath.split('.').pop().toLowerCase();
+        const mimeMap = {
+            mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg',
+            m4a: 'audio/mp4', aac: 'audio/aac', au: 'audio/basic', voc: 'audio/voc',
+            flac: 'audio/flac', wma: 'audio/x-ms-wma', speex: 'audio/speex'
+        };
+        const mime = mimeMap[ext] || 'audio/mpeg';
+        console.log('playAudio: mime=' + mime + ', ext=' + ext);
+
+        const audio = new Audio('data:' + mime + ';base64,' + result.data);
+        audio.play().catch(e => console.warn('playAudio: playback failed', e));
+    } catch (e) {
+        console.warn('playAudio: error', e);
+    }
+};
+
+// Event delegation: intercept clicks on links with data-sound attribute
+document.addEventListener('click', function(e) {
+    const link = e.target.closest('a[data-sound]');
+    if (!link) return;
+    e.preventDefault();
+    const dictTitle = link.getAttribute('data-dict');
+    const soundPath = link.getAttribute('data-sound');
+    if (dictTitle && soundPath) {
+        window.playAudio(dictTitle, soundPath);
+    }
+});
+
+// ============================================================================
+// Search & display
+// ============================================================================
+
+// Reorder dict-sections to match dictOrder
+function reorderResults() {
+    const container = contentArea.querySelector('.dict-results');
+    if (!container || dictOrder.length === 0) return;
+    const sections = [...container.querySelectorAll('.dict-section')];
+    if (sections.length <= 1) return;
+
+    // Sort sections by their position in dictOrder
+    sections.sort((a, b) => {
+        const aName = a.dataset.dict || '';
+        const bName = b.dataset.dict || '';
+        const aIdx = dictOrder.indexOf(aName);
+        const bIdx = dictOrder.indexOf(bName);
+        // Items not in dictOrder go last
+        if (aIdx < 0 && bIdx < 0) return 0;
+        if (aIdx < 0) return 1;
+        if (bIdx < 0) return -1;
+        return aIdx - bIdx;
+    });
+
+    // Re-append in sorted order
+    sections.forEach(s => container.appendChild(s));
 }
 
 // Search function
@@ -64,6 +213,22 @@ async function doSearch(word) {
             contentArea.innerHTML = `<div class="welcome"><p>${result.error}</p></div>`;
         } else {
             contentArea.innerHTML = `<div class="dict-results">${result.html}</div>`;
+            // Reorder dict-sections to match dictOrder
+            reorderResults();
+            // Add collapse buttons to dict-name headers
+            contentArea.querySelectorAll('.dict-name').forEach(nameEl => {
+                const btn = document.createElement('span');
+                btn.className = 'collapse-btn';
+                btn.textContent = '\u25BC'; // ▼
+                nameEl.insertBefore(btn, nameEl.firstChild);
+                nameEl.addEventListener('click', () => {
+                    const article = nameEl.nextElementSibling;
+                    if (article && article.classList.contains('dict-article')) {
+                        nameEl.classList.toggle('collapsed');
+                        article.classList.toggle('collapsed');
+                    }
+                });
+            });
         }
         statusText.textContent = `Found: ${q}`;
     } catch (e) {

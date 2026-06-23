@@ -1,6 +1,7 @@
 #include "tauricpp/app.hpp"
 #include "tauricpp/dialog.hpp"
 #include "dictionary_manager.hpp"
+#include "goldendict/iconv.hh"
 #include <Windows.h>
 #include <shellapi.h>
 #include <string>
@@ -72,7 +73,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     std::thread loadThread([exeDir]() {
         Log("Loading dictionaries...");
         g_dictManager.loadDictionaryDir((exeDir + "dictionary").c_str());
-        g_dictManager.loadDictionaryDir((exeDir + "bing").c_str());
+        g_dictManager.finalizeLoading();
         std::string msg = "Loaded " + std::to_string(g_dictManager.getDictCount()) + " dicts, " + std::to_string(g_dictManager.getWordCount()) + " words";
         Log(msg.c_str());
         g_dictLoaded = true;
@@ -94,15 +95,51 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
 
     bridge.RegisterCommand("dict_info", [](const nlohmann::json&) -> nlohmann::json {
         return {
-            {"title", g_dictManager.getTitle()},
+            {"title", Iconv::ensureUtf8(g_dictManager.getTitle())},
             {"word_count", g_dictManager.getWordCount()},
             {"dict_count", g_dictManager.getDictCount()},
-            {"loaded", g_dictLoaded.load()}
+            {"loaded", g_dictLoaded.load()},
+            {"progress_dict", Iconv::ensureUtf8(g_dictManager.getProgressDict())},
+            {"progress_current", g_dictManager.getProgressCurrent()},
+            {"progress_total", g_dictManager.getProgressTotal()},
+            {"progress_cached", g_dictManager.getProgressCached()}
         };
     });
 
     bridge.RegisterCommand("dict_list", [](const nlohmann::json&) -> nlohmann::json {
         return g_dictManager.getDictList();
+    });
+
+    bridge.RegisterCommand("resource", [](const nlohmann::json& args) -> nlohmann::json {
+        std::string dict = args.value("dict", "");
+        std::string path = args.value("path", "");
+        if (dict.empty() || path.empty()) return {{"data", ""}, {"error", "Missing dict or path"}};
+        std::string base64 = g_dictManager.lookupResource(dict, path);
+        if (base64.empty()) return {{"data", ""}, {"error", "Resource not found"}};
+        return {{"data", base64}};
+    });
+
+    bridge.RegisterCommand("mdd_search", [](const nlohmann::json& args) -> nlohmann::json {
+        std::string dict = args.value("dict", "");
+        std::string pattern = args.value("pattern", "");
+        if (dict.empty() || pattern.empty()) return {{"words", nlohmann::json::array()}};
+        auto results = g_dictManager.searchMddHeadwords(dict, pattern);
+        return {{"words", results}};
+    });
+
+    bridge.RegisterCommand("set_dict_order", [](const nlohmann::json& args) -> nlohmann::json {
+        auto orderArr = args.value("order", nlohmann::json::array());
+        std::vector<std::string> order;
+        for (auto& item : orderArr) {
+            if (item.is_string()) order.push_back(item.get<std::string>());
+        }
+        g_dictManager.setDictOrder(order);
+        return {{"success", true}};
+    });
+
+    bridge.RegisterCommand("get_dict_order", [](const nlohmann::json&) -> nlohmann::json {
+        auto order = g_dictManager.getDictOrder();
+        return {{"order", order}};
     });
 
     bridge.RegisterCommand("window.minimize", [&app](const nlohmann::json&) -> nlohmann::json {

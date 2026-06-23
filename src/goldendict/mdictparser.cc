@@ -11,6 +11,29 @@
 #ifdef _WIN32
 #include <io.h>
 #include <windows.h>
+
+// Helper: open file with Chinese path support on Windows
+// Uses CP_ACP because std::filesystem::path::string() returns ANSI-encoded strings on Windows
+static FILE* openFileWide(const char* path, const char* mode) {
+  int wlen = MultiByteToWideChar(CP_ACP, 0, path, -1, nullptr, 0);
+  if (wlen <= 0) return nullptr;
+  std::wstring wpath(wlen, 0);
+  MultiByteToWideChar(CP_ACP, 0, path, -1, &wpath[0], wlen);
+  std::wstring wmode;
+  while (*mode) wmode += (wchar_t)*mode++;
+  return _wfopen(wpath.c_str(), wmode.c_str());
+}
+
+// Helper: fseek with 64-bit offset on Windows
+static int fseek64(FILE* f, int64_t offset, int origin) {
+  return _fseeki64(f, offset, origin);
+}
+
+// Helper: ftell with 64-bit offset on Windows
+static int64_t ftell64(FILE* f) {
+  return _ftelli64(f);
+}
+
 static void* memmap_create(FILE* f, int64_t offset, int64_t size, void** mapAddr) {
   HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(f));
   if (hFile == INVALID_HANDLE_VALUE) return nullptr;
@@ -98,14 +121,14 @@ bool MdictParser::open(const char* filename) {
     }
   }
   filename_ = filename;
-  file_ = fopen(filename, "rb");
+  file_ = openFileWide(filename, "rb");
   if (!file_) {
     MDICT_LOG("Cannot open file: %s\n", filename);
     return false;
   }
-  fseek(file_, 0, SEEK_END);
-  long fileSize = ftell(file_);
-  fseek(file_, 0, SEEK_SET);
+  fseek64(file_, 0, SEEK_END);
+  int64_t fileSize = ftell64(file_);
+  fseek64(file_, 0, SEEK_SET);
   MDICT_LOG("Opened %s, size=%ld\n", filename, fileSize);
   if (!readHeader(file_)) {
     MDICT_LOG("readHeader FAILED\n");
@@ -135,7 +158,7 @@ bool MdictParser::readNextHeadWordIndex(HeadWordIndex& headWordIndex) {
   if (compressedSize < 8) { MDICT_LOG("readNHWI: bad compressed size\n"); return false; }
 
   // Read compressed data using fread instead of mmap (more portable)
-  fseek(file_, headWordPos_, SEEK_SET);
+  fseek64(file_, headWordPos_, SEEK_SET);
   std::vector<char> compressedBuf(compressedSize);
   size_t bytesRead = fread(compressedBuf.data(), 1, compressedSize, file_);
   if ((int64_t)bytesRead != compressedSize) {
@@ -317,8 +340,13 @@ bool MdictParser::readHeader(FILE* in) {
   string title = attrs.count("Title") ? attrs["Title"] : "";
   if (title.empty() || title == "Title (No HTML code allowed)") {
     string fn = filename_;
+    // Strip directory path - only keep the base filename
+    auto slash = fn.find_last_of("/\\");
+    if (slash != string::npos) fn = fn.substr(slash + 1);
     auto dot = fn.rfind('.');
     title_ = (dot != string::npos) ? fn.substr(0, dot) : fn;
+    // Filename may be in ANSI/GBK encoding on Windows - ensure UTF-8
+    title_ = Iconv::ensureUtf8(title_);
   } else {
     if (title.find('<') != string::npos || title.find('>') != string::npos) {
       std::regex tagRx("<[^>]*>");
@@ -326,6 +354,9 @@ bool MdictParser::readHeader(FILE* in) {
     } else title_ = title;
   }
   description_ = attrs.count("Description") ? attrs["Description"] : "";
+  // Ensure title and description are valid UTF-8
+  title_ = Iconv::ensureUtf8(title_);
+  description_ = Iconv::ensureUtf8(description_);
   return true;
 }
 
@@ -362,7 +393,7 @@ bool MdictParser::readHeadWordBlockInfos(FILE* in) {
     }
     MDICT_LOG("readHWBI: checksum OK\n");
   }
-  headWordBlockInfoPos_ = ftell(in);
+  headWordBlockInfoPos_ = ftell64(in);
   MDICT_LOG("readHWBI: blockInfoPos=%ld\n", (long)headWordBlockInfoPos_);
   std::vector<char> headWordBlockInfo(headWordBlockInfoSize_);
   size_t readBytes = fread(headWordBlockInfo.data(), 1, headWordBlockInfoSize_, in);
@@ -387,19 +418,19 @@ bool MdictParser::readHeadWordBlockInfos(FILE* in) {
   } else {
     headWordBlockInfos_ = decodeHeadWordBlockInfo(headWordBlockInfo);
   }
-  headWordPos_ = ftell(in);
+  headWordPos_ = ftell64(in);
   headWordBlockInfosIter_ = headWordBlockInfos_.begin();
   MDICT_LOG("readHWBI: ALL OK, numBlockInfos=%zu\n", headWordBlockInfos_.size());
   return true;
 }
 
 bool MdictParser::readRecordBlockInfos() {
-  fseek(file_, headWordBlockInfoPos_ + headWordBlockInfoSize_ + headWordBlockSize_, SEEK_SET);
+  fseek64(file_, headWordBlockInfoPos_ + headWordBlockInfoSize_ + headWordBlockSize_, SEEK_SET);
   int64_t numRecordBlocks = readNumber(file_);
   readNumber(file_);
   int64_t recordInfoSize = readNumber(file_);
   totalRecordsSize_ = readNumber(file_);
-  recordPos_ = ftell(file_) + recordInfoSize;
+  recordPos_ = ftell64(file_) + recordInfoSize;
   recordBlockInfos_.reserve(numRecordBlocks);
   int64_t acc1 = 0, acc2 = 0;
   for (int64_t i = 0; i < numRecordBlocks; i++) {
@@ -496,9 +527,9 @@ bool MdictParser::readRecordById(HeadWordIndex& fullHeadWordIndex, int64_t targe
   int64_t nextPos = (idx + 1 < fullHeadWordIndex.size()) ? fullHeadWordIndex[idx + 1].first : ri.shadowEndPos;
   int64_t recordSize = nextPos - fullHeadWordIndex[idx].first;
 
-  FILE* f = fopen(filename_.c_str(), "rb");
+  FILE* f = openFileWide(filename_.c_str(), "rb");
   if (!f) return false;
-  fseek(f, recordPos_ + ri.startPos, SEEK_SET);
+  fseek64(f, recordPos_ + ri.startPos, SEEK_SET);
   std::vector<char> compressed(ri.compressedSize);
   size_t bytesRead = fread(compressed.data(), 1, ri.compressedSize, f);
   fclose(f);
@@ -533,7 +564,8 @@ string& MdictParser::substituteStylesheet(string& article, const StyleSheets& st
   auto rx_end = std::sregex_iterator();
   size_t pos = 0;
   for (auto it = rx_begin; it != rx_end; ++it) {
-    int styleId = std::stoi((*it)[1].str());
+    int styleId = 0;
+    try { styleId = std::stoi((*it)[1].str()); } catch (...) { continue; }
     articleNewText += article.substr(pos, (*it).position() - pos);
     pos = (*it).position() + (*it)[0].str().size();
     auto iter = styleSheets.find(styleId);
