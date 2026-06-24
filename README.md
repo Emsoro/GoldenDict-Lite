@@ -1,4 +1,4 @@
-# GoldenDict-Lite v1.1.0
+# GoldenDict-Lite v1.2.0
 
 轻量级桌面词典，基于 [TauriCPP](https://gitee.com/masonwu21/tauri-cpp) 框架构建，支持 MDX/MDD 词典解析引擎，实现零外部依赖、单 EXE 部署的现代词典应用。
 
@@ -17,6 +17,7 @@
 - **GBK/UTF-8 编码兼容** — 自动检测并转换 GBK 编码的词典标题和内容
 - **词典图标** — 自动加载同名 .png 作为词典标识
 - **SQLite 缓存** — 词典索引缓存到本地数据库，二次启动秒加载
+- **MDD 图片嵌入** — 词条中的 `<img>` 标签自动从 MDD 资源加载并替换为 base64 内嵌图片，无需解压资源文件
 - **系统托盘** — 最小化到托盘，双击恢复
 - **护眼米白金配色** — 温暖舒适的界面主题
 - **纯 C++ 实现** — 无 Qt、无 Electron、无 Rust，纯 Win32 + WebView2
@@ -47,6 +48,7 @@
 │  │  - 词条查询 (lookup)                          │ │
 │  │  - MDD 资源查找 (多卷)                        │ │
 │  │  - 音频播放 (base64 编码)                     │ │
+│  │  - 图片嵌入 (MDD 图片自动替换为 base64)       │ │
 │  │  - 词典排序持久化                              │ │
 │  │  - CSS 样式独立作用域                          │ │
 │  │  - 图标加载 (base64)                          │ │
@@ -133,19 +135,22 @@ GoldenDict-Lite/
 ### 首次编译
 
 ```powershell
-# 1. 安装依赖 (首次)
+# 1. 安装依赖 (首次，需提前安装 vcpkg)
 vcpkg install zlib:x64-windows-static webview2:x64-windows-static
 
-# 2. 配置
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64 `
-    -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" `
-    -DVCPKG_TARGET_TRIPLET=x64-windows-static
+# 2. 编译（自动配置 + 构建）
+.\build.ps1
 
-# 3. 编译
-cmake --build build --config Release
-
-# 4. 运行单元测试
+# 3. 运行单元测试
 .\build\Release\test_bugfixes.exe
+```
+
+可选参数：
+
+```powershell
+.\build.ps1 -Config Debug          # 编译 Debug 版本
+.\build.ps1 -Generator "MinGW Makefiles" -Arch x64  # 使用其他生成器
+.\build.ps1 -Clean                 # 清理后重新编译
 ```
 
 ### 运行
@@ -175,9 +180,21 @@ copy src\icon.ico build\Release\
 5. 在搜索框输入词汇，实时查看所有词典的释义
 6. 支持候选词自动补全，回车或点击直接查询
 7. 查询结果按词典分组，点击标题可折叠/展开
-8. 底部词典栏可拖拽调整顺序，查询结果按此顺序排列
+8. 底部词典栏可拖拽调整顺序，查询结果按此顺序排列，悬停可查看词条数
 9. 词典内发音链接可直接点击播放音频
-10. 点击最小化按钮可最小化到系统托盘，双击托盘图标恢复
+10. 词条中的图片自动从 MDD 资源加载并显示，无需额外解压
+11. 点击最小化按钮可最小化到系统托盘，双击托盘图标恢复
+
+## v1.2.0 更新内容
+
+- 新增 MDD 图片嵌入 — 词条中的 `<img>` 标签自动从 MDD 资源加载并替换为 base64 内嵌图片
+- 新增词典栏 Tooltip — 悬停显示词典名称和词条数
+- 新增状态栏版本号显示
+- 修复词条页面绝对定位元素溢出容器的问题
+- 修复音频按钮与词条标题不在同一行的问题
+- 优化构建脚本 — 直接调用 MSVC 环境编译，无需手动配置 vcpkg 工具链
+- 新增 Windows 版本信息资源（右键 EXE → 属性可查看版本）
+- 重构资源查找逻辑，提取 `lookupResourceLocked` 内部方法
 
 ## v1.1.0 更新内容
 
@@ -206,7 +223,7 @@ copy src\icon.ico build\Release\
 |----|------|------|
 | WebView2Loader | WebView2 静态加载器 | 1.0.3240 |
 | zlib | MDX 压缩/解压 | 1.3.1 |
-| SQLite3 | 词典索引缓存 | 3.45.0 |
+| SQLite3 | 词典索引缓存 (源码内嵌 `third_party/sqlite3/`) | 3.45.0 |
 | nlohmann/json | JSON 通信 | 3.11.3 |
 | Windows API | 编码转换、文件操作 | Win10+ |
 

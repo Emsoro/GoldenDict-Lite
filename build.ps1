@@ -1,65 +1,41 @@
-# Build script for GoldenDict-Lite
 param(
-    [switch]$Clean,
-    [switch]$SetupDeps
+    [string]$Config = "Release",
+    [string]$Generator = "Visual Studio 17 2022",
+    [string]$Arch = "x64",
+    [switch]$Clean
 )
 
 $ErrorActionPreference = "Stop"
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Set-Location $scriptDir
+$ProjectDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BuildDir = Join-Path $ProjectDir "build"
 
-if ($SetupDeps) {
-    Write-Host "Setting up dependencies..." -ForegroundColor Cyan
-    Push-Location "TauriCPP"
-    & .\build.ps1 -SetupDeps
-    Pop-Location
-    
-    # Install zlib via vcpkg
-    Write-Host "Installing zlib..." -ForegroundColor Cyan
-    vcpkg install zlib:x64-windows --triplet x64-windows
-    
-    Write-Host "Dependencies setup complete!" -ForegroundColor Green
-    exit 0
-}
-
-$buildDir = "build"
-if ($Clean -and (Test-Path $buildDir)) {
+if ($Clean -and (Test-Path $BuildDir)) {
     Write-Host "Cleaning build directory..." -ForegroundColor Yellow
-    Remove-Item -Recurse -Force $buildDir
+    Remove-Item -Recurse -Force $BuildDir
 }
 
-if (-not (Test-Path $buildDir)) {
-    New-Item -ItemType Directory -Path $buildDir | Out-Null
+# Setup MSVC environment
+$vsWhere = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat"
+if (-not (Test-Path $vsWhere)) {
+    $vsWhere = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat"
 }
-
-Set-Location $buildDir
-
-# Find vcpkg toolchain
-$vcpkgRoot = $env:VCPKG_ROOT
-if (-not $vcpkgRoot) {
-    $vcpkgRoot = "C:/vcpkg"
+if (-not (Test-Path $vsWhere)) {
+    $vsWhere = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat"
 }
-
-$toolchainFile = Join-Path $vcpkgRoot "scripts/buildsystems/vcpkg.cmake"
-
-Write-Host "Configuring with CMake..." -ForegroundColor Cyan
-cmake .. -G Ninja `
-    -DCMAKE_TOOLCHAIN_FILE="$toolchainFile" `
-    -DVCPKG_TARGET_TRIPLET=x64-windows `
-    -DCMAKE_BUILD_TYPE=Release
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "CMake configuration failed!" -ForegroundColor Red
+if (-not (Test-Path $vsWhere)) {
+    Write-Error "Visual Studio 2022 not found. Please install VS 2022 with C++ workload."
     exit 1
 }
 
-Write-Host "Building..." -ForegroundColor Cyan
-cmake --build . --config Release
+# Configure
+Write-Host "Configuring with generator: $Generator, arch: $Arch, config: $Config" -ForegroundColor Cyan
+& $vsWhere $Arch
+cmake -G $Generator -A $Arch -B $BuildDir -S $ProjectDir
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Build failed!" -ForegroundColor Red
-    exit 1
-}
+# Build
+Write-Host "Building $Config..." -ForegroundColor Cyan
+cmake --build $BuildDir --config $Config
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "Build successful!" -ForegroundColor Green
-Write-Host "Output: build/GoldenDictLite.exe" -ForegroundColor Green
+Write-Host "Build succeeded: $BuildDir\$Config\GoldenDictLite.exe" -ForegroundColor Green

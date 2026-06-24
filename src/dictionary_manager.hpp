@@ -40,6 +40,8 @@ public:
   std::vector<std::string> getDictOrder() const;
 
 private:
+  std::string lookupResourceLocked(const std::string& dictTitle, const std::string& resourcePath);
+
   struct DictEntry {
     std::string title;
     std::string description;

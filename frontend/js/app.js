@@ -71,6 +71,7 @@ function createDictBarItem(d) {
     item.className = 'dict-bar-item';
     item.draggable = true;
     item.dataset.name = d.name;
+    item.title = `${d.name} (${d.word_count.toLocaleString()} 词)`;
     if (d.icon) {
         const img = document.createElement('img');
         img.src = d.icon;

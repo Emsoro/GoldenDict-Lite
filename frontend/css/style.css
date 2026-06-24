@@ -90,6 +90,7 @@ body {
     border-radius: 6px;
     background: #fff;
     overflow: hidden;
+    position: relative;
 }
 .dict-name {
     background: #f0ead6;
@@ -103,6 +104,8 @@ body {
     align-items: center;
     gap: 8px;
     user-select: none;
+    position: relative;
+    z-index: 1;
 }
 .dict-name:hover { background: #e8e0c8; }
 .dict-name .collapse-btn {
@@ -125,8 +128,17 @@ body {
     padding: 12px 14px;
     line-height: 1.7;
     font-size: 14px;
-    overflow-x: auto;
+    overflow: hidden;
     transition: max-height 0.25s ease, padding 0.25s ease, opacity 0.2s ease;
+    position: relative;
+}
+/* Prevent absolute positioned elements from escaping */
+.dict-article * {
+    max-width: 100%;
+}
+.dict-article [style*="position: absolute"],
+.dict-article [style*="position:absolute"] {
+    position: relative !important;
 }
 .dict-article.collapsed {
     max-height: 0 !important;
@@ -137,6 +149,31 @@ body {
 }
 .dict-article b, .dict-article strong { color: #8a7a52; }
 .dict-article img { max-width: 100%; }
+
+/* Keep word title and audio button on the same line */
+.dict-article h2, .dict-article h3, .dict-article h4,
+.dict-article .headword, .dict-article .entry-title {
+    display: inline;
+    margin-right: 8px;
+}
+
+/* Audio links should be inline with the word */
+.dict-article a[data-sound] {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 4px;
+}
+.dict-article a[data-sound] img {
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+}
+
+/* Container for word and audio - keep them together */
+.dict-article .pron, .dict-article .phonetic {
+    display: inline;
+    white-space: nowrap;
+}
 .dict-icon { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; border-radius: 3px; }
 .dict-bar {
     display: flex;
@@ -152,11 +189,15 @@ body {
     align-items: center;
     gap: 6px;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 12px;
     color: #7a6b4a;
     cursor: grab;
     padding: 4px 8px;
     border-radius: 4px;
+    width: 120px;
+    flex-shrink: 0;
     transition: background 0.15s, transform 0.15s;
 }
 .dict-bar-item:hover { background: #e8e0c8; }
@@ -174,4 +215,12 @@ body {
     color: #fff;
     font-size: 12px;
     flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#versionText {
+    opacity: 0.8;
+    font-size: 11px;
 }

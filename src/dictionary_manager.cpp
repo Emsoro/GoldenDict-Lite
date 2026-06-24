@@ -481,6 +481,73 @@ std::string DictionaryManager::lookup(const std::string& word) {
         }
       }
 
+      // Replace <img src="..."> with base64 data from MDD resources
+      {
+        size_t pos = 0;
+        while ((pos = article.find("<img ", pos)) != std::string::npos) {
+          size_t tagEnd = article.find('>', pos);
+          if (tagEnd == std::string::npos) { pos += 5; continue; }
+
+          // Find the src attribute (try double-quoted then single-quoted)
+          size_t srcPos = std::string::npos;
+          char quoteChar = '"';
+          {
+            size_t sp = article.find("src=\"", pos);
+            if (sp != std::string::npos && sp < tagEnd) { srcPos = sp; quoteChar = '"'; }
+            else {
+              sp = article.find("src='", pos);
+              if (sp != std::string::npos && sp < tagEnd) { srcPos = sp; quoteChar = '\''; }
+            }
+          }
+          if (srcPos == std::string::npos) { pos = tagEnd + 1; continue; }
+
+          size_t urlStart = srcPos + 5; // skip src=" or src='
+          size_t urlEnd = article.find(quoteChar, urlStart);
+          if (urlEnd == std::string::npos || urlEnd > tagEnd) { pos = tagEnd + 1; continue; }
+
+          std::string imgSrc = article.substr(urlStart, urlEnd - urlStart);
+
+          // Skip URLs that are already data:, http://, https://, or sound://
+          if (imgSrc.empty() ||
+              imgSrc.compare(0, 5, "data:") == 0 ||
+              imgSrc.compare(0, 7, "http://") == 0 ||
+              imgSrc.compare(0, 8, "https://") == 0 ||
+              imgSrc.compare(0, 7, "sound://") == 0) {
+            pos = urlEnd + 1;
+            continue;
+          }
+
+          // Try to load the image from MDD
+          std::string base64Data = lookupResourceLocked(dict.title, imgSrc);
+          if (base64Data.empty()) {
+            pos = urlEnd + 1;
+            continue;
+          }
+
+          // Determine MIME type from extension
+          std::string ext;
+          auto dotPos2 = imgSrc.rfind('.');
+          if (dotPos2 != std::string::npos) {
+            ext = imgSrc.substr(dotPos2 + 1);
+            for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+          }
+          std::string mime;
+          if (ext == "png") mime = "image/png";
+          else if (ext == "jpg" || ext == "jpeg") mime = "image/jpeg";
+          else if (ext == "gif") mime = "image/gif";
+          else if (ext == "svg") mime = "image/svg+xml";
+          else if (ext == "webp") mime = "image/webp";
+          else if (ext == "bmp") mime = "image/bmp";
+          else if (ext == "ico") mime = "image/x-icon";
+          else if (ext == "tif" || ext == "tiff") mime = "image/tiff";
+          else mime = "image/png"; // default for MDX dictionaries
+
+          std::string dataUri = "data:" + mime + ";base64," + base64Data;
+          article.replace(urlStart, urlEnd - urlStart, dataUri);
+          pos = urlStart + dataUri.size();
+        }
+      }
+
       matchCount++;
       allResults += "<div class=\"dict-section\" data-dict=\"" + dict.title + "\">";
       std::string nameHtml;
@@ -587,6 +654,10 @@ std::vector<std::string> DictionaryManager::getDictOrder() const {
 
 std::string DictionaryManager::lookupResource(const std::string& dictTitle, const std::string& resourcePath) {
   std::lock_guard<std::mutex> lock(mutex_);
+  return lookupResourceLocked(dictTitle, resourcePath);
+}
+
+std::string DictionaryManager::lookupResourceLocked(const std::string& dictTitle, const std::string& resourcePath) {
 
   for (auto& dict : dicts_) {
     if (dict.title != dictTitle) continue;
