@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <set>
+#include <regex>
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -212,6 +213,62 @@ std::string DictionaryManager::loadDict(const char* mdxPath, DictEntry& entry) {
   } catch (...) {
     // MDD loading failed - continue without MDD resources
     entry.mddVolumes.clear();
+  }
+
+  // Resolve CSS url() references by loading resources from MDD
+  if (!entry.cssContent.empty() && !entry.mddVolumes.empty()) {
+    static const std::regex urlRx("url\\(([^)]+)\\)", std::regex::icase);
+    std::string css = entry.cssContent;
+    std::string result;
+    size_t lastEnd = 0;
+    auto it_begin = std::sregex_iterator(css.begin(), css.end(), urlRx);
+    auto it_end = std::sregex_iterator();
+    for (auto it = it_begin; it != it_end; ++it) {
+      result += css.substr(lastEnd, it->position() - lastEnd);
+      std::string url = (*it)[1].str();
+      // Strip quotes
+      if (!url.empty() && (url[0] == '\'' || url[0] == '"'))
+        url = url.substr(1, url.size() - 2);
+      // Skip data: URLs and http(s) URLs
+      if (url.compare(0, 5, "data:") == 0 || url.compare(0, 4, "http") == 0) {
+        result += (*it)[0].str();
+      } else {
+        // Try to load from MDD
+        std::string base64;
+        for (auto& vol : entry.mddVolumes) {
+          if (!vol.cache || !vol.cache->isValid()) continue;
+          DictCache::RecordLookup rl;
+          // Try with leading backslash
+          std::string path = "\\" + url;
+          if (vol.cache->lookupRecord(path, vol.recordPos, rl)) {
+            base64 = readResourceFromVolume(vol, rl);
+            break;
+          }
+          if (vol.cache->lookupRecord(url, vol.recordPos, rl)) {
+            base64 = readResourceFromVolume(vol, rl);
+            break;
+          }
+        }
+        if (!base64.empty()) {
+          // Determine MIME type from extension
+          std::string mime = "image/png";
+          auto dot = url.rfind('.');
+          if (dot != std::string::npos) {
+            std::string ext = url.substr(dot + 1);
+            for (auto& c : ext) c = (char)std::tolower((unsigned char)c);
+            if (ext == "jpg" || ext == "jpeg") mime = "image/jpeg";
+            else if (ext == "gif") mime = "image/gif";
+            else if (ext == "svg") mime = "image/svg+xml";
+          }
+          result += "url(data:" + mime + ";base64," + base64 + ")";
+        } else {
+          result += (*it)[0].str();
+        }
+      }
+      lastEnd = it->position() + (*it)[0].str().size();
+    }
+    result += css.substr(lastEnd);
+    entry.cssContent = std::move(result);
   }
 
   return "";

@@ -177,25 +177,6 @@ body {
     display: none;
 }
 
-/* Override Oxford icon-plus-minus-orange.png with text icons (PNG is in MDD, not loadable via CSS url) */
-.dict-article details > summary::before,
-.dict-article div.collapse .box_title::before,
-.dict-article div.collapse pnc.heading::before {
-    content: "+ " !important;
-    font-weight: bold;
-    color: #F08B6E;
-    display: inline !important;
-    width: auto !important;
-    height: auto !important;
-    background-image: none !important;
-    position: static !important;
-}
-.dict-article details[open] > summary::before,
-.dict-article div.collapse .is-active .box_title::before,
-.dict-article div.collapse .is-active pnc.heading::before {
-    content: "\2212 " !important;
-}
-
 /* Container for word and audio - keep them together */
 .dict-article .pron, .dict-article .phonetic {
     display: inline;
