@@ -41,6 +41,7 @@ public:
 
 private:
   std::string lookupResourceLocked(const std::string& dictTitle, const std::string& resourcePath);
+  std::string lookupInternal(const std::string& word, int depth);
 
   struct DictEntry {
     std::string title;

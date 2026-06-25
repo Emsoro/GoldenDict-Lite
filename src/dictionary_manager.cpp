@@ -393,6 +393,11 @@ std::vector<std::string> DictionaryManager::prefixMatch(const std::string& prefi
 
 std::string DictionaryManager::lookup(const std::string& word) {
   std::lock_guard<std::mutex> lock(mutex_);
+  return lookupInternal(word, 0);
+}
+
+std::string DictionaryManager::lookupInternal(const std::string& word, int depth) {
+  if (depth > 10) return "";
   std::string allResults;
   int matchCount = 0;
 
@@ -430,6 +435,25 @@ std::string DictionaryManager::lookup(const std::string& word) {
 
       // Ensure article is valid UTF-8 (handles MDX with wrong encoding header, e.g. header says UTF-8 but content is GBK)
       article = Iconv::ensureUtf8(article);
+
+      // Handle @@@LINK= redirect (e.g. @@@LINK=牟 → look up 牟 instead)
+      {
+        static const std::string linkPrefix = "@@@LINK=";
+        size_t start = 0;
+        while (start < article.size() && (unsigned char)article[start] <= ' ') start++;
+        if (article.compare(start, linkPrefix.size(), linkPrefix) == 0) {
+          size_t targetStart = start + linkPrefix.size();
+          size_t targetEnd = targetStart;
+          while (targetEnd < article.size() && article[targetEnd] != '\0' &&
+                 (unsigned char)article[targetEnd] > ' ') targetEnd++;
+          std::string target = article.substr(targetStart, targetEnd - targetStart);
+          if (!target.empty()) {
+            std::string linked = lookupInternal(target, depth + 1);
+            if (!linked.empty()) return linked;
+          }
+          continue;
+        }
+      }
 
       if (!dict.styleSheets.empty())
         Mdict::MdictParser::substituteStylesheet(article, dict.styleSheets);
