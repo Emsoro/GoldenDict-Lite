@@ -162,14 +162,54 @@ window.playAudio = async function(dictTitle, resourcePath) {
 };
 
 // Event delegation: intercept clicks on links with data-sound attribute
+// AND handle inline onclick from MDX content (e.g. Oxford Extra Examples toggle)
 document.addEventListener('click', function(e) {
+    // Handle data-sound links
     const link = e.target.closest('a[data-sound]');
-    if (!link) return;
-    e.preventDefault();
-    const dictTitle = link.getAttribute('data-dict');
-    const soundPath = link.getAttribute('data-sound');
-    if (dictTitle && soundPath) {
-        window.playAudio(dictTitle, soundPath);
+    if (link) {
+        e.preventDefault();
+        const dictTitle = link.getAttribute('data-dict');
+        const soundPath = link.getAttribute('data-sound');
+        if (dictTitle && soundPath) {
+            window.playAudio(dictTitle, soundPath);
+        }
+        return;
+    }
+
+    // Handle inline onclick from MDX article content (e.g. Oxford "Extra Examples" toggle)
+    const el = e.target;
+    if (el.hasAttribute('onclick')) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+            const fn = el.onclick;
+            if (typeof fn === 'function') {
+                fn.call(el, e);
+            } else {
+                const handler = el.getAttribute('onclick');
+                new Function('event', handler).call(el, e);
+            }
+        } catch (err) {
+            console.warn('onclick failed:', err);
+        }
+        return;
+    }
+    // Also check parent elements (click on child of clickable element)
+    const clickable = e.target.closest('[onclick]');
+    if (clickable && clickable !== el) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+            const fn = clickable.onclick;
+            if (typeof fn === 'function') {
+                fn.call(clickable, e);
+            } else {
+                const handler = clickable.getAttribute('onclick');
+                new Function('event', handler).call(clickable, e);
+            }
+        } catch (err) {
+            console.warn('onclick failed:', err);
+        }
     }
 });
 
