@@ -1,4 +1,4 @@
-# GoldenDict-Lite v1.2.1
+# GoldenDict-Lite v1.2.2
 
 轻量级桌面词典，基于 [TauriCPP](https://gitee.com/masonwu21/tauri-cpp) 框架构建，支持 MDX/MDD 词典解析引擎，实现零外部依赖、单 EXE 部署的现代词典应用。
 
@@ -184,6 +184,14 @@ copy src\icon.ico build\Release\
 9. 词典内发音链接可直接点击播放音频
 10. 词条中的图片自动从 MDD 资源加载并显示，无需额外解压
 11. 点击最小化按钮可最小化到系统托盘，双击托盘图标恢复
+
+## v1.2.2 更新内容
+
+- 新增 `@@@LINK=X` 语法支持，词条内容为跳转链接时自动查询目标词条（递归深度限制10层）
+- 新增牛津词典折叠展开支持（Extra Examples、Collocations、Word Origin 等）
+- 实现 `toggle_active()` JS 函数，匹配牛津 MDX 的 onclick 折叠逻辑
+- 词典 CSS 的 `url()` 引用自动从 MDD 资源加载并内嵌为 base64 data URL
+- 状态栏版本号同步更新
 
 ## v1.2.1 更新内容
 
