@@ -1,4 +1,4 @@
-# GoldenDict-Lite v1.2.0
+# GoldenDict-Lite v1.2.1
 
 轻量级桌面词典，基于 [TauriCPP](https://gitee.com/masonwu21/tauri-cpp) 框架构建，支持 MDX/MDD 词典解析引擎，实现零外部依赖、单 EXE 部署的现代词典应用。
 
@@ -184,6 +184,16 @@ copy src\icon.ico build\Release\
 9. 词典内发音链接可直接点击播放音频
 10. 词条中的图片自动从 MDD 资源加载并显示，无需额外解压
 11. 点击最小化按钮可最小化到系统托盘，双击托盘图标恢复
+
+## v1.2.1 更新内容
+
+- 修复 `Encrypted="No"` MDX 头部属性导致 `std::stoi` 抛异常崩溃的问题（王力古汉语字典等词典无法加载）
+- 加固 MDX 解析器：headword block info 解析增加边界检查，防止越界读取
+- 加固 `splitHeadWordBlock`：用 `memchr` 替代 `strlen`，防止缓冲区越界
+- 加固 `MemReader::seek`：防止 `size_t` 无符号整数溢出
+- 修复 `MemReader::tell` 返回类型从 `long` 改为 `size_t`，避免 x64 平台截断
+- 加载线程增加 try-catch，防止单个词典解析异常导致整个应用崩溃
+- 增加词典加载错误日志输出
 
 ## v1.2.0 更新内容
 

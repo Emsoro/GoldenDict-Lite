@@ -1,10 +1,10 @@
 #include <windows.h>
 101 ICON "icon.ico"
 
-#define VER_FILE_VERSION             1,2,0,0
-#define VER_FILE_VERSION_STR         "1.2.0.0\0"
-#define VER_PRODUCT_VERSION          1,2,0,0
-#define VER_PRODUCT_VERSION_STR      "1.2.0\0"
+#define VER_FILE_VERSION             1,2,1,0
+#define VER_FILE_VERSION_STR         "1.2.1.0\0"
+#define VER_PRODUCT_VERSION          1,2,1,0
+#define VER_PRODUCT_VERSION_STR      "1.2.1\0"
 #define VER_PRODUCT_NAME             "GoldenDict-Lite\0"
 #define VER_FILE_DESCRIPTION         "GoldenDict-Lite Dictionary Application\0"
 #define VER_INTERNAL_NAME            "GoldenDictLite\0"

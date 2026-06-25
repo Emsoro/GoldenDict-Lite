@@ -27,11 +27,18 @@ public:
     return toRead;
   }
   void seek(long offset, int origin) {
-    if (origin == SEEK_SET) pos_ = offset;
-    else if (origin == SEEK_CUR) pos_ += offset;
-    else if (origin == SEEK_END) pos_ = size_ + offset;
+    if (origin == SEEK_SET) pos_ = (offset >= 0) ? (size_t)offset : 0;
+    else if (origin == SEEK_CUR) {
+      if (offset >= 0) pos_ += (size_t)offset;
+      else if (pos_ >= (size_t)(-offset)) pos_ -= (size_t)(-offset);
+      else pos_ = 0;
+    }
+    else if (origin == SEEK_END) {
+      if (offset <= 0 && size_ >= (size_t)(-offset)) pos_ = size_ + offset;
+      else pos_ = size_;
+    }
   }
-  long tell() const { return (long)pos_; }
+  size_t tell() const { return pos_; }
   bool eof() const { return pos_ >= size_; }
 };
 

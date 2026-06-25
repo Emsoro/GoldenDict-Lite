@@ -72,7 +72,13 @@ std::string DictionaryManager::loadDict(const char* mdxPath, DictEntry& entry) {
     entry.styleSheets = entry.cache->loadStyleSheets();
   } else {
     Mdict::MdictParser parser;
-    if (!parser.open(mdxPath)) return "MdictParser::open failed for: " + std::string(mdxPath);
+    try {
+      if (!parser.open(mdxPath)) return "MdictParser::open failed for: " + std::string(mdxPath);
+    } catch (const std::exception& e) {
+      return std::string("MdictParser::open exception: ") + e.what();
+    } catch (...) {
+      return "MdictParser::open unknown exception";
+    }
 
     entry.title = Iconv::ensureUtf8(parser.title());
     entry.description = Iconv::ensureUtf8(parser.description());
@@ -80,11 +86,15 @@ std::string DictionaryManager::loadDict(const char* mdxPath, DictEntry& entry) {
     entry.wordCount = parser.wordCount();
 
     std::vector<DictCache::CachedHeadWord> headwords;
-    Mdict::MdictParser::HeadWordIndex block;
-    while (parser.readNextHeadWordIndex(block)) {
-      for (auto& hw : block)
-        headwords.push_back({hw.first, hw.second});
-      block.clear();
+    try {
+      Mdict::MdictParser::HeadWordIndex block;
+      while (parser.readNextHeadWordIndex(block)) {
+        for (auto& hw : block)
+          headwords.push_back({hw.first, hw.second});
+        block.clear();
+      }
+    } catch (...) {
+      return "Failed reading headword index: " + std::string(mdxPath);
     }
 
     auto& parserBlocks = parser.getRecordBlockInfos();
@@ -311,10 +321,18 @@ size_t DictionaryManager::loadDictionaryDir(const char* dirPath) {
     }
 
     DictEntry dictEntry;
-    std::string error = loadDict(mdxFiles[i].c_str(), dictEntry);
-    if (error.empty()) {
-      dicts_.push_back(std::move(dictEntry));
-      loaded++;
+    try {
+      std::string error = loadDict(mdxFiles[i].c_str(), dictEntry);
+      if (error.empty()) {
+        dicts_.push_back(std::move(dictEntry));
+        loaded++;
+      } else {
+        OutputDebugStringA(("LoadDict failed: " + error + "\n").c_str());
+      }
+    } catch (const std::exception& e) {
+      OutputDebugStringA(("LoadDict exception: " + std::string(e.what()) + "\n").c_str());
+    } catch (...) {
+      OutputDebugStringA("LoadDict unknown exception\n");
     }
   }
 

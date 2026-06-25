@@ -71,11 +71,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
     Log("App created");
 
     std::thread loadThread([exeDir]() {
-        Log("Loading dictionaries...");
-        g_dictManager.loadDictionaryDir((exeDir + "dictionary").c_str());
-        g_dictManager.finalizeLoading();
-        std::string msg = "Loaded " + std::to_string(g_dictManager.getDictCount()) + " dicts, " + std::to_string(g_dictManager.getWordCount()) + " words";
-        Log(msg.c_str());
+        try {
+            Log("Loading dictionaries...");
+            g_dictManager.loadDictionaryDir((exeDir + "dictionary").c_str());
+            g_dictManager.finalizeLoading();
+            std::string msg = "Loaded " + std::to_string(g_dictManager.getDictCount()) + " dicts, " + std::to_string(g_dictManager.getWordCount()) + " words";
+            Log(msg.c_str());
+        } catch (const std::exception& e) {
+            Log(("Dictionary loading exception: " + std::string(e.what())).c_str());
+        } catch (...) {
+            Log("Dictionary loading failed with unknown exception");
+        }
         g_dictLoaded = true;
     });
     loadThread.detach();

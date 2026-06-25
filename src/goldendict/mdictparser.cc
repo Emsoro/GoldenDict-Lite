@@ -155,7 +155,7 @@ bool MdictParser::readNextHeadWordIndex(HeadWordIndex& headWordIndex) {
   int64_t compressedSize = headWordBlockInfosIter_->first;
   int64_t decompressedSize = headWordBlockInfosIter_->second;
   MDICT_LOG("readNHWI: block compressed=%lld decompressed=%lld\n", compressedSize, decompressedSize);
-  if (compressedSize < 8) { MDICT_LOG("readNHWI: bad compressed size\n"); return false; }
+  if (compressedSize < 8 || decompressedSize <= 0 || decompressedSize > 100000000LL) { MDICT_LOG("readNHWI: bad block sizes\n"); return false; }
 
   // Read compressed data using fread instead of mmap (more portable)
   fseek64(file_, headWordPos_, SEEK_SET);
@@ -311,15 +311,24 @@ bool MdictParser::readHeader(FILE* in) {
   }
   headerTextUtf16.clear();
   string styleSheets;
-  if (headerText.find("StyleSheet") != string::npos) {
-    std::regex rx("StyleSheet=\"([^\"]*?)\"", std::regex::icase);
-    std::smatch match;
-    if (std::regex_search(headerText, match, rx)) styleSheets = match[1].str();
+  map<string, string> attrs;
+  try {
+    if (headerText.find("StyleSheet") != string::npos) {
+      std::regex rx("StyleSheet=\"([^\"]*?)\"", std::regex::icase);
+      std::smatch match;
+      if (std::regex_search(headerText, match, rx)) styleSheets = match[1].str();
+    }
+    std::regex ctrlRx("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
+    headerText = std::regex_replace(headerText, ctrlRx, "");
+    attrs = parseHeaderAttributes(headerText);
+    if (attrs.empty()) { MDICT_LOG("readHeader: attrs.empty() - header attributes not found\n"); return false; }
+  } catch (const std::exception& e) {
+    MDICT_LOG("readHeader: regex/parse exception: %s\n", e.what());
+    return false;
+  } catch (...) {
+    MDICT_LOG("readHeader: unknown exception during header parsing\n");
+    return false;
   }
-  std::regex ctrlRx("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]");
-  headerText = std::regex_replace(headerText, ctrlRx, "");
-  auto attrs = parseHeaderAttributes(headerText);
-  if (attrs.empty()) return false;
   encoding_ = attrs.count("Encoding") ? attrs["Encoding"] : "";
   if (encoding_ == "GBK" || encoding_ == "GB2312") encoding_ = "GB18030";
   else if (encoding_.empty() || encoding_ == "UTF-16") encoding_ = "UTF-16LE";
@@ -335,7 +344,13 @@ bool MdictParser::readHeader(FILE* in) {
   }
   version_ = attrs.count("GeneratedByEngineVersion") ? std::stod(attrs["GeneratedByEngineVersion"]) : 1.0;
   numberTypeSize_ = version_ >= 2.0 ? 8 : 4;
-  encrypted_ = attrs.count("Encrypted") ? std::stoi(attrs["Encrypted"]) : 0;
+  encrypted_ = 0;
+  if (attrs.count("Encrypted")) {
+    auto& enc = attrs["Encrypted"];
+    if (enc == "No" || enc == "no") encrypted_ = 0;
+    else if (enc == "Yes" || enc == "yes") encrypted_ = 1;
+    else try { encrypted_ = std::stoi(enc); } catch (...) {}
+  }
   rtl_ = attrs.count("Left2Right") ? (attrs["Left2Right"] != "Yes") : true;
   string title = attrs.count("Title") ? attrs["Title"] : "";
   if (title.empty() || title == "Title (No HTML code allowed)") {
@@ -430,6 +445,10 @@ bool MdictParser::readRecordBlockInfos() {
   readNumber(file_);
   int64_t recordInfoSize = readNumber(file_);
   totalRecordsSize_ = readNumber(file_);
+  if (numRecordBlocks < 0 || numRecordBlocks > 100000000LL) {
+    MDICT_LOG("readRBI: invalid numRecordBlocks=%lld\n", numRecordBlocks);
+    return false;
+  }
   recordPos_ = ftell64(file_) + recordInfoSize;
   recordBlockInfos_.reserve(numRecordBlocks);
   int64_t acc1 = 0, acc2 = 0;
@@ -451,13 +470,25 @@ MdictParser::BlockInfoVector MdictParser::decodeHeadWordBlockInfo(const std::vec
   bool isU16 = version_ >= 2.0;
   int textTermSize = isU16 ? 1 : 0;
   while (!s.eof()) {
+    size_t start = s.tell();
+    if (start + numberTypeSize_ > headWordBlockInfo.size()) break;
     s.seek(numberTypeSize_, SEEK_CUR);
     uint32_t textHeadSize = readU8OrU16Mem(s, isU16);
-    s.seek((encoding_ != "UTF-16LE") ? textHeadSize + textTermSize : (textHeadSize + textTermSize) * 2, SEEK_CUR);
+    size_t headSkip = (encoding_ != "UTF-16LE") ? (size_t)(textHeadSize + textTermSize) : (size_t)(textHeadSize + textTermSize) * 2;
+    size_t pos = s.tell();
+    if (pos + headSkip > headWordBlockInfo.size()) break;
+    s.seek(headSkip, SEEK_CUR);
+    if (s.eof()) break;
     uint32_t textTailSize = readU8OrU16Mem(s, isU16);
-    s.seek((encoding_ != "UTF-16LE") ? textTailSize + textTermSize : (textTailSize + textTermSize) * 2, SEEK_CUR);
+    size_t tailSkip = (encoding_ != "UTF-16LE") ? (size_t)(textTailSize + textTermSize) : (size_t)(textTailSize + textTermSize) * 2;
+    pos = s.tell();
+    if (pos + tailSkip > headWordBlockInfo.size()) break;
+    s.seek(tailSkip, SEEK_CUR);
+    pos = s.tell();
+    if (pos + numberTypeSize_ * 2 > headWordBlockInfo.size()) break;
     int64_t compressedSize = readNumberMem(s);
     int64_t decompressedSize = readNumberMem(s);
+    if (compressedSize <= 0 || decompressedSize <= 0 || decompressedSize > 100000000LL) break;
     headWordBlockInfos.emplace_back(compressedSize, decompressedSize);
   }
   return headWordBlockInfos;
@@ -468,6 +499,7 @@ MdictParser::HeadWordIndex MdictParser::splitHeadWordBlock(const std::vector<cha
   const char* p = block.data();
   const char* end = p + block.size();
   while (p < end) {
+    if (p + numberTypeSize_ > end) break;
     int64_t headWordId = (numberTypeSize_ == 8) ?
       (((int64_t)(uint8_t)p[0] << 56) | ((int64_t)(uint8_t)p[1] << 48) | ((int64_t)(uint8_t)p[2] << 40) | ((int64_t)(uint8_t)p[3] << 32) |
        ((int64_t)(uint8_t)p[4] << 24) | ((int64_t)(uint8_t)p[5] << 16) | ((int64_t)(uint8_t)p[6] << 8) | (uint8_t)p[7]) :
@@ -476,9 +508,13 @@ MdictParser::HeadWordIndex MdictParser::splitHeadWordBlock(const std::vector<cha
     std::vector<char> headWordBuf;
     if (encoding_ == "UTF-16LE") {
       int headWordLength = u16StrSize((const uint16_t*)p);
-      headWordBuf.assign(p, p + (headWordLength + 1) * 2);
+      size_t byteLen = (headWordLength + 1) * 2;
+      if (p + (long)byteLen > end) break;
+      headWordBuf.assign(p, p + byteLen);
     } else {
-      int headWordLength = (int)strlen(p);
+      const char* nul = (const char*)memchr(p, '\0', end - p);
+      if (!nul) break;
+      size_t headWordLength = nul - p;
       headWordBuf.assign(p, p + headWordLength + 1);
     }
     p += headWordBuf.size();
