@@ -169,6 +169,77 @@ body {
     vertical-align: middle;
 }
 
+/* Ensure <details>/<summary> native toggle works */
+.dict-article details {
+    display: block !important;
+    margin: 0.4rem 0;
+    border-left: 3px solid #F08B6E;
+    background-color: #FCE8E2;
+}
+.dict-article details > summary {
+    padding: 0.4rem 0.9rem 0.4rem 0.8rem;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    font-weight: 600;
+    color: #032c5b;
+}
+.dict-article details > summary::-webkit-details-marker {
+    display: none;
+}
+.dict-article details > summary::before {
+    content: "+ ";
+    font-weight: bold;
+    color: #F08B6E;
+}
+.dict-article details[open] > summary::before {
+    content: "\2212 ";
+}
+.dict-article details[open] > summary {
+    border-bottom: 1px solid #F08B6E;
+}
+.dict-article details > .details_contents,
+.dict-article details > .body,
+.dict-article details > ul,
+.dict-article details > ol {
+    padding: 0.5rem 1rem;
+    background-color: #FDF3F0;
+}
+
+/* div.collapse toggle (Oxford JS pattern) */
+.dict-article div.collapse > .box_title,
+.dict-article div.collapse > pnc.heading {
+    padding: 0.4rem 0.9rem 0.4rem 0.8rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: #032c5b;
+    user-select: none;
+}
+.dict-article div.collapse > .box_title::before,
+.dict-article div.collapse > pnc.heading::before {
+    content: "+ ";
+    font-weight: bold;
+    color: #F08B6E;
+}
+.dict-article div.collapse.is-active > .box_title::before,
+.dict-article div.collapse.is-active > pnc.heading::before {
+    content: "\2212 ";
+}
+.dict-article div.collapse > ul,
+.dict-article div.collapse > table,
+.dict-article div.collapse > .body,
+.dict-article div.collapse > .p {
+    display: none;
+}
+.dict-article div.collapse.is-active > ul,
+.dict-article div.collapse.is-active > table,
+.dict-article div.collapse.is-active > .body,
+.dict-article div.collapse.is-active > .p {
+    display: block;
+    padding: 0.5rem 1rem;
+    background-color: #FDF3F0;
+}
+
 /* Container for word and audio - keep them together */
 .dict-article .pron, .dict-article .phonetic {
     display: inline;

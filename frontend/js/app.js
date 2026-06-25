@@ -176,36 +176,33 @@ document.addEventListener('click', function(e) {
         return;
     }
 
-    // Handle inline onclick from MDX article content (e.g. Oxford "Extra Examples" toggle)
-    const el = e.target;
-    if (el.hasAttribute('onclick')) {
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-            const fn = el.onclick;
-            if (typeof fn === 'function') {
-                fn.call(el, e);
-            } else {
-                const handler = el.getAttribute('onclick');
-                new Function('event', handler).call(el, e);
-            }
-        } catch (err) {
-            console.warn('onclick failed:', err);
-        }
+    // Do NOT interfere with native <details>/<summary> toggle
+    if (e.target.closest('summary') || e.target.closest('details')) {
         return;
     }
-    // Also check parent elements (click on child of clickable element)
-    const clickable = e.target.closest('[onclick]');
-    if (clickable && clickable !== el) {
+
+    // Handle div.collapse toggle (Oxford pattern: .box_title / pnc.heading click toggles .is-active)
+    const collapseHeader = e.target.closest('.box_title, pnc.heading');
+    if (collapseHeader) {
+        const collapse = collapseHeader.closest('.collapse, div.collapse');
+        if (collapse) {
+            e.preventDefault();
+            collapse.classList.toggle('is-active');
+            return;
+        }
+    }
+
+    // Handle inline onclick from MDX article content (e.g. Oxford "Extra Examples" toggle)
+    const el = e.target;
+    const clickable = el.hasAttribute('onclick') ? el : el.closest('[onclick]');
+    if (clickable) {
         e.preventDefault();
         e.stopPropagation();
         try {
-            const fn = clickable.onclick;
-            if (typeof fn === 'function') {
+            const handler = clickable.getAttribute('onclick');
+            if (handler) {
+                const fn = new Function('event', handler);
                 fn.call(clickable, e);
-            } else {
-                const handler = clickable.getAttribute('onclick');
-                new Function('event', handler).call(clickable, e);
             }
         } catch (err) {
             console.warn('onclick failed:', err);
