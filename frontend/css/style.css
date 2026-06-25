@@ -176,37 +176,40 @@ body {
     border-left: 3px solid #F08B6E;
     background-color: #FCE8E2;
 }
-.dict-article details > summary {
+.dict-article details > summary,
+.dict-article details > summary::-webkit-details-marker {
     padding: 0.4rem 0.9rem 0.4rem 0.8rem;
     cursor: pointer;
     user-select: none;
     list-style: none;
-    font-weight: 600;
-    color: #032c5b;
+    display: block;
 }
 .dict-article details > summary::-webkit-details-marker {
     display: none;
 }
 .dict-article details > summary::before {
-    content: "+ ";
+    content: "+ " !important;
     font-weight: bold;
     color: #F08B6E;
+    display: inline !important;
+    width: auto !important;
+    height: auto !important;
+    background-image: none !important;
+    position: static !important;
 }
 .dict-article details[open] > summary::before {
-    content: "\2212 ";
+    content: "\2212 " !important;
 }
 .dict-article details[open] > summary {
     border-bottom: 1px solid #F08B6E;
 }
-.dict-article details > .details_contents,
-.dict-article details > .body,
-.dict-article details > ul,
-.dict-article details > ol {
-    padding: 0.5rem 1rem;
-    background-color: #FDF3F0;
-}
 
 /* div.collapse toggle (Oxford JS pattern) */
+.dict-article div.collapse,
+.dict-article div.collapse .unbox,
+.dict-article div.collapse pnc {
+    display: block;
+}
 .dict-article div.collapse > .box_title,
 .dict-article div.collapse > pnc.heading {
     padding: 0.4rem 0.9rem 0.4rem 0.8rem;
@@ -214,16 +217,22 @@ body {
     font-weight: 600;
     color: #032c5b;
     user-select: none;
+    display: block;
 }
 .dict-article div.collapse > .box_title::before,
 .dict-article div.collapse > pnc.heading::before {
-    content: "+ ";
+    content: "+ " !important;
     font-weight: bold;
     color: #F08B6E;
+    display: inline !important;
+    width: auto !important;
+    height: auto !important;
+    background-image: none !important;
+    position: static !important;
 }
 .dict-article div.collapse.is-active > .box_title::before,
 .dict-article div.collapse.is-active > pnc.heading::before {
-    content: "\2212 ";
+    content: "\2212 " !important;
 }
 .dict-article div.collapse > ul,
 .dict-article div.collapse > table,
