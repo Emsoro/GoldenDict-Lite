@@ -134,13 +134,16 @@ function createDictBarItem(d) {
 // ============================================================================
 
 // toggle_active: used by Oxford MDX for expand/collapse of Extra Examples, etc.
-// Called as toggle_active('elementId') — toggles the 'is-active' class on the target element
+// Called as toggle_active(this) where this = <span class="box_title">
+// The is-active class goes on the parent .unbox element
 window.toggle_active = function(x) {
     var e;
     if (typeof x === 'string') {
         e = document.getElementById(x);
     } else if (x && x.nodeType) {
-        e = x;
+        // x is the clicked element (e.g. box_title span)
+        // Find the parent .unbox element and toggle is-active on it
+        e = x.closest('.unbox') || x.closest('.collapse') || x;
     }
     if (e) {
         e.classList.toggle('is-active');
