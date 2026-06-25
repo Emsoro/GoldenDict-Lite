@@ -130,6 +130,27 @@ function createDictBarItem(d) {
 }
 
 // ============================================================================
+// GoldenDict-mdx JavaScript API (called from MDX article HTML)
+// ============================================================================
+
+// toggle_active: used by Oxford MDX for expand/collapse of Extra Examples, etc.
+// Called as toggle_active('elementId') — toggles the 'is-active' class on the target element
+window.toggle_active = function(x) {
+    var e;
+    if (typeof x === 'string') {
+        e = document.getElementById(x);
+    } else if (x && x.nodeType) {
+        e = x;
+    }
+    if (e) {
+        e.classList.toggle('is-active');
+    }
+};
+
+// Also expose as bare function for onclick="toggle_active('...')" in MDX content
+function toggle_active(x) { window.toggle_active(x); }
+
+// ============================================================================
 // Audio playback from MDD resources
 // ============================================================================
 
