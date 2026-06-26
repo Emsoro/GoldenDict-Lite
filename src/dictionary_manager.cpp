@@ -8,7 +8,6 @@
 #include <filesystem>
 #include <set>
 #include <regex>
-#include <sstream>
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -626,33 +625,61 @@ std::string DictionaryManager::lookupInternal(const std::string& word, int depth
       std::string scopedCss = dict.cssContent;
       if (!scopedCss.empty()) {
         std::string scope = "[data-dict-index=\"" + std::to_string(matchCount - 1) + "\"] ";
-        static const std::regex ruleRx("([^{}@][^{}]*)(\\{)", std::regex::ECMAScript);
         std::string result;
-        size_t lastEnd = 0;
-        for (auto it = std::sregex_iterator(scopedCss.begin(), scopedCss.end(), ruleRx);
-             it != std::sregex_iterator(); ++it) {
-          result += scopedCss.substr(lastEnd, it->position() - lastEnd);
-          std::string selectors = (*it)[1].str();
-          // Skip @-rules (already consumed up to {)
-          if (selectors.find('@') != std::string::npos) {
-            result += selectors + (*it)[2].str();
-          } else {
-            // Prefix each comma-separated selector with scope
-            std::string scoped;
-            std::istringstream ss(selectors);
-            std::string sel;
-            while (std::getline(ss, sel, ',')) {
-              // Trim leading whitespace
-              size_t start = sel.find_first_not_of(" \t\r\n");
-              if (start == std::string::npos) continue;
-              if (!scoped.empty()) scoped += ",";
-              scoped += scope + sel.substr(start);
+        result.reserve(scopedCss.size() + scopedCss.size() / 4);
+        int depth = 0;
+        size_t ruleStart = 0;
+        for (size_t i = 0; i < scopedCss.size(); i++) {
+          char c = scopedCss[i];
+          if (c == '{') {
+            if (depth == 0) {
+              // Start of a rule block — prefix selector with scope
+              std::string sel = scopedCss.substr(ruleStart, i - ruleStart);
+              // Skip @-rules
+              size_t nonWs = sel.find_first_not_of(" \t\r\n");
+              if (nonWs != std::string::npos && sel[nonWs] == '@') {
+                result += sel;
+              } else {
+                // Trim trailing whitespace from selector
+                size_t end = sel.find_last_not_of(" \t\r\n");
+                if (end != std::string::npos) sel = sel.substr(0, end + 1);
+                // Prefix each comma-separated selector
+                std::string scoped;
+                size_t pos = 0;
+                while (pos < sel.size()) {
+                  size_t comma = sel.find(',', pos);
+                  std::string part = sel.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+                  size_t s = part.find_first_not_of(" \t\r\n");
+                  if (s != std::string::npos) {
+                    if (!scoped.empty()) scoped += ",";
+                    scoped += scope + part.substr(s);
+                  }
+                  if (comma == std::string::npos) break;
+                  pos = comma + 1;
+                }
+                result += scoped;
+              }
             }
-            result += scoped + (*it)[2].str();
+            depth++;
+            result += c;
+          } else if (c == '}') {
+            depth--;
+            result += c;
+            if (depth == 0) {
+              ruleStart = i + 1;
+            }
+          } else if (depth == 0 && c == '/' && i + 1 < scopedCss.size() && scopedCss[i + 1] == '*') {
+            // Skip CSS comments at top level
+            size_t end = scopedCss.find("*/", i + 2);
+            if (end == std::string::npos) end = scopedCss.size() - 2;
+            result += scopedCss.substr(i, end + 2 - i);
+            i = end + 1;
+            ruleStart = i + 1;
+          } else if (depth == 0) {
+            // Don't copy whitespace between rules (will be re-added by scope)
           }
-          lastEnd = it->position() + (*it)[0].str().size();
         }
-        result += scopedCss.substr(lastEnd);
+        result += scopedCss.substr(ruleStart);
         scopedCss = std::move(result);
       }
       allResults += "<div class=\"dict-article\"><style>" + scopedCss + "</style>" + article + "</div>";
