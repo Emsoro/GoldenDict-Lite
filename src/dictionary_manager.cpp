@@ -316,16 +316,6 @@ std::string DictionaryManager::loadDictionaryEx(const char* mdxPath) {
   return "";
 }
 
-// Get the path for the dict order file (next to the exe)
-static std::string getDictOrderFilePath() {
-  char exePath[MAX_PATH] = {};
-  GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-  std::string dir(exePath);
-  auto pos = dir.rfind('\\');
-  if (pos != std::string::npos) dir = dir.substr(0, pos);
-  return dir + "\\dict_order.json";
-}
-
 size_t DictionaryManager::loadDictionaryDir(const char* dirPath) {
   std::lock_guard<std::mutex> lock(mutex_);
 
@@ -398,29 +388,6 @@ size_t DictionaryManager::loadDictionaryDir(const char* dirPath) {
 
 void DictionaryManager::finalizeLoading() {
   std::lock_guard<std::mutex> lock(mutex_);
-
-  // Load saved dict order from file
-  try {
-    std::string orderPath = getDictOrderFilePath();
-    FILE* f = openFileWide(orderPath, "r");
-    if (f) {
-      std::string content;
-      fseek64(f, 0, SEEK_END);
-      auto sz = _ftelli64(f);
-      fseek64(f, 0, SEEK_SET);
-      content.resize((size_t)sz);
-      fread(content.data(), 1, content.size(), f);
-      fclose(f);
-      auto j = nlohmann::json::parse(content, nullptr, false);
-      if (j.is_array()) {
-        dictOrder_.clear();
-        for (auto& item : j) {
-          if (item.is_string())
-            dictOrder_.push_back(item.get<std::string>());
-        }
-      }
-    }
-  } catch (...) {}
 
   // If dict order doesn't match current dicts, update it
   if (dictOrder_.empty() || dictOrder_.size() != dicts_.size()) {
@@ -732,18 +699,6 @@ nlohmann::json DictionaryManager::getDictList() const {
 void DictionaryManager::setDictOrder(const std::vector<std::string>& order) {
   std::lock_guard<std::mutex> lock(mutex_);
   dictOrder_ = order;
-
-  // Save to file
-  try {
-    nlohmann::json j = order;
-    std::string content = j.dump(2);
-    std::string path = getDictOrderFilePath();
-    FILE* f = openFileWide(path, "w");
-    if (f) {
-      fwrite(content.c_str(), 1, content.size(), f);
-      fclose(f);
-    }
-  } catch (...) {}
 }
 
 std::vector<std::string> DictionaryManager::getDictOrder() const {

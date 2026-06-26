@@ -1094,6 +1094,24 @@ void test_encrypted_no_attribute() {
 }
 
 // ============================================================================
+// Debug: dump raw article HTML for Oxford "china"
+// ============================================================================
+
+void test_dump_oxford_china_html() {
+  TEST("Dump Oxford china article HTML (debug)");
+  DictionaryManager mgr;
+  std::string dictDir = "D:\\Work\\CPlusPlus\\golden-dict-lite\\build\\Release\\dictionary";
+  mgr.loadDictionaryDir(dictDir.c_str());
+  mgr.finalizeLoading();
+  std::string html = mgr.lookup("china");
+  std::ofstream dump("oxford_china_dump.html");
+  dump << "<html><head><meta charset='utf-8'></head><body>" << html << "</body></html>";
+  dump.close();
+  std::cout << "Dumped to oxford_china_dump.html (" << html.size() << " bytes)" << std::endl;
+  PASS();
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1165,6 +1183,9 @@ int main() {
 
   std::cout << std::endl << "[11. Encrypted=\"No\" header attribute parsing]" << std::endl;
   test_encrypted_no_attribute();
+
+  std::cout << std::endl << "[12. Debug: dump Oxford HTML]" << std::endl;
+  test_dump_oxford_china_html();
 
   std::cout << std::endl;
   std::cout << "=== Results: " << g_testsPassed << " passed, " << g_testsFailed << " failed ===" << std::endl;

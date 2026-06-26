@@ -11,7 +11,48 @@ let isSearching = false;
 let dictBarLoaded = false;
 let dictOrder = []; // store dict names in order
 
-// Dict order is now persisted by C++ backend (dict_order.json file)
+// ============================================================================
+// IndexedDB persistence for dict order
+// ============================================================================
+
+const DB_NAME = 'goldendict-lite';
+const DB_VERSION = 1;
+const STORE_NAME = 'settings';
+
+function openDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = () => {
+            req.result.createObjectStore(STORE_NAME);
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function loadDictOrderFromDB() {
+    try {
+        const db = await openDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const req = tx.objectStore(STORE_NAME).get('dictOrder');
+            req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+            req.onerror = () => resolve([]);
+        });
+    } catch { return []; }
+}
+
+async function saveDictOrderToDB(order) {
+    try {
+        const db = await openDB();
+        return new Promise((resolve) => {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(order, 'dictOrder');
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        });
+    } catch {}
+}
 
 // ============================================================================
 // Dictionary info & bar
@@ -54,14 +95,22 @@ async function loadDictBar() {
         if (!bar) return;
         bar.innerHTML = '';
 
-        // dict_list already returns items in saved order (C++ handles persistence)
+        // Load saved order from IndexedDB and apply to C++ backend
+        const savedOrder = await loadDictOrderFromDB();
+        if (savedOrder.length > 0) {
+            await __tauricpp__.invoke('set_dict_order', { order: savedOrder });
+            // Re-fetch list in saved order
+            const orderedList = await __tauricpp__.invoke('dict_list', {});
+            if (Array.isArray(orderedList)) {
+                dictOrder = orderedList.map(d => d.name);
+                orderedList.forEach(d => bar.appendChild(createDictBarItem(d)));
+                dictBarLoaded = true;
+                return;
+            }
+        }
+
         dictOrder = list.map(d => d.name);
-
-        list.forEach(d => {
-            const item = createDictBarItem(d);
-            bar.appendChild(item);
-        });
-
+        list.forEach(d => bar.appendChild(createDictBarItem(d)));
         dictBarLoaded = true;
     } catch (e) {}
 }
@@ -120,11 +169,9 @@ function createDictBarItem(d) {
         } else {
             bar.insertBefore(draggedEl, items[targetIdx]);
         }
-        // Update dictOrder and persist to C++ backend
+        // Update dictOrder and persist to IndexedDB
         dictOrder = [...bar.children].map(el => el.dataset.name);
-        try {
-            await __tauricpp__.invoke('set_dict_order', { order: dictOrder });
-        } catch (e) {}
+        saveDictOrderToDB(dictOrder);
     });
     return item;
 }
@@ -152,6 +199,50 @@ window.toggle_active = function(x) {
 
 // Also expose as bare function for onclick="toggle_active('...')" in MDX content
 function toggle_active(x) { window.toggle_active(x); }
+
+// ============================================================================
+// Oxford image toggle: thumb <-> fullsize, pic_thumb <-> big_pic
+// ============================================================================
+
+// ox-enlarge: toggle between .thumb and .fullsize inside #ox-enlarge
+window.toggle_enlarger = function(el) {
+    var container = el.closest ? el : el;
+    var thumb = container.querySelector('.thumb');
+    var fullsize = container.querySelector('.fullsize');
+    if (thumb && fullsize) {
+        var thumbHidden = getComputedStyle(thumb).display === 'none';
+        if (thumbHidden) {
+            thumb.style.display = 'inline';
+            fullsize.style.display = 'none';
+        } else {
+            thumb.style.display = 'none';
+            fullsize.style.display = 'inline';
+        }
+    }
+};
+function toggle_enlarger(el) { window.toggle_enlarger(el); }
+
+// pic_thumb click -> hide thumb, show big_pic
+window.expand_big = function(el) {
+    var pic = el.closest('.pic');
+    if (pic) {
+        el.style.display = 'none';
+        var big = pic.querySelector('.big_pic');
+        if (big) big.style.display = 'block';
+    }
+};
+
+// big_pic click -> hide big_pic, show pic_thumb
+window.expand_thumb = function(el) {
+    var pic = el.closest('.pic');
+    if (pic) {
+        el.style.display = 'none';
+        var thumb = pic.querySelector('.pic_thumb');
+        if (thumb) thumb.style.display = 'block';
+    }
+};
+function expand_big(el) { window.expand_big(el); }
+function expand_thumb(el) { window.expand_thumb(el); }
 
 // ============================================================================
 // Audio playback from MDD resources
@@ -188,6 +279,19 @@ window.playAudio = async function(dictTitle, resourcePath) {
 // Event delegation: intercept clicks on links with data-sound attribute
 // AND handle inline onclick from MDX content (e.g. Oxford Extra Examples toggle)
 document.addEventListener('click', function(e) {
+    // Handle entry:// links (see also, topics, cross-references)
+    const entryLink = e.target.closest('a[href^="entry://"]');
+    if (entryLink) {
+        e.preventDefault();
+        const href = entryLink.getAttribute('href');
+        const word = href.replace('entry://', '');
+        if (word) {
+            searchInput.value = word;
+            doSearch(word);
+        }
+        return;
+    }
+
     // Handle data-sound links
     const link = e.target.closest('a[data-sound]');
     if (link) {
