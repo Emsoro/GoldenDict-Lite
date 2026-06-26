@@ -675,8 +675,9 @@ std::string DictionaryManager::lookupInternal(const std::string& word, int depth
             result += scopedCss.substr(i, end + 2 - i);
             i = end + 1;
             ruleStart = i + 1;
-          } else if (depth == 0) {
-            // Don't copy whitespace between rules (will be re-added by scope)
+          } else if (depth > 0) {
+            // Inside a rule block — copy content as-is
+            result += c;
           }
         }
         result += scopedCss.substr(ruleStart);
