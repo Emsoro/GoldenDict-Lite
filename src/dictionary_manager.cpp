@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <set>
 #include <regex>
+#include <sstream>
 #ifdef _WIN32
 #include <Windows.h>
 #endif
@@ -615,13 +616,46 @@ std::string DictionaryManager::lookupInternal(const std::string& word, int depth
       }
 
       matchCount++;
-      allResults += "<div class=\"dict-section\" data-dict=\"" + dict.title + "\">";
+      allResults += "<div class=\"dict-section\" data-dict=\"" + dict.title + "\" data-dict-index=\"" + std::to_string(matchCount - 1) + "\">";
       std::string nameHtml;
       if (!dict.iconBase64.empty())
         nameHtml += "<img class=\"dict-icon\" src=\"" + dict.iconBase64 + "\">";
       nameHtml += dict.title;
       allResults += "<div class=\"dict-name\">" + nameHtml + "</div>";
-      allResults += "<div class=\"dict-article\"><style>" + dict.cssContent + "</style>" + article + "</div>";
+      // Scope CSS to this dict-section to prevent cross-dictionary style bleed
+      std::string scopedCss = dict.cssContent;
+      if (!scopedCss.empty()) {
+        std::string scope = "[data-dict-index=\"" + std::to_string(matchCount - 1) + "\"] ";
+        static const std::regex ruleRx("([^{}@][^{}]*)(\\{)", std::regex::ECMAScript);
+        std::string result;
+        size_t lastEnd = 0;
+        for (auto it = std::sregex_iterator(scopedCss.begin(), scopedCss.end(), ruleRx);
+             it != std::sregex_iterator(); ++it) {
+          result += scopedCss.substr(lastEnd, it->position() - lastEnd);
+          std::string selectors = (*it)[1].str();
+          // Skip @-rules (already consumed up to {)
+          if (selectors.find('@') != std::string::npos) {
+            result += selectors + (*it)[2].str();
+          } else {
+            // Prefix each comma-separated selector with scope
+            std::string scoped;
+            std::istringstream ss(selectors);
+            std::string sel;
+            while (std::getline(ss, sel, ',')) {
+              // Trim leading whitespace
+              size_t start = sel.find_first_not_of(" \t\r\n");
+              if (start == std::string::npos) continue;
+              if (!scoped.empty()) scoped += ",";
+              scoped += scope + sel.substr(start);
+            }
+            result += scoped + (*it)[2].str();
+          }
+          lastEnd = it->position() + (*it)[0].str().size();
+        }
+        result += scopedCss.substr(lastEnd);
+        scopedCss = std::move(result);
+      }
+      allResults += "<div class=\"dict-article\"><style>" + scopedCss + "</style>" + article + "</div>";
       allResults += "</div>";
     } catch (const std::exception& e) {
       // Skip this dictionary on error, continue with others

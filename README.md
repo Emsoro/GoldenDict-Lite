@@ -189,6 +189,7 @@ vcpkg install zlib:x64-windows-static webview2:x64-windows-static
 - 实现 MDX 词典图片缩略图/大图点击切换（`toggle_enlarger`、`expand_big`、`expand_thumb`）
 - 实现 `entry://` 链接跳转（see also、Topics 等交叉引用可点击跳转查询）
 - 词典排序持久化改为 IndexedDB，移除 C++ 端文件读写（`dict_order.json`）
+- 修复多词典 CSS 样式互相污染问题（每个词典 CSS 通过 `data-dict-index` 属性隔离作用域）
 
 ## v1.2.2 更新内容
 
