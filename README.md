@@ -156,9 +156,6 @@ vcpkg install zlib:x64-windows-static webview2:x64-windows-static
 ### 运行
 
 ```powershell
-# 确保 Release 目录下有 icon.ico
-copy src\icon.ico build\Release\
-# 运行
 .\build\Release\GoldenDictLite.exe
 ```
 
