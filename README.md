@@ -180,13 +180,13 @@ vcpkg install zlib:x64-windows-static webview2:x64-windows-static
 8. 底部词典栏可拖拽调整顺序，查询结果按此顺序排列，悬停可查看词条数
 9. 词典内发音链接可直接点击播放音频
 10. 词条中的图片自动从 MDD 资源加载并显示，无需额外解压
-11. 牛津词典图片点击可切换缩略图/大图
+11. MDX 词典图片点击可切换缩略图/大图（支持 ox-enlarge、pic_thumb/big_pic 等模式）
 12. see also、Topics 等交叉引用链接可点击跳转查询
 13. 点击最小化按钮可最小化到系统托盘，双击托盘图标恢复
 
 ## v1.2.3 更新内容
 
-- 实现 Oxford 缩略图/大图点击切换（`toggle_enlarger`、`expand_big`、`expand_thumb`）
+- 实现 MDX 词典图片缩略图/大图点击切换（`toggle_enlarger`、`expand_big`、`expand_thumb`）
 - 实现 `entry://` 链接跳转（see also、Topics 等交叉引用可点击跳转查询）
 - 词典排序持久化改为 IndexedDB，移除 C++ 端文件读写（`dict_order.json`）
 
