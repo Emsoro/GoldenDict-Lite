@@ -473,7 +473,10 @@ std::string DictionaryManager::lookupInternal(const std::string& word, int depth
           std::string target = article.substr(targetStart, targetEnd - targetStart);
           if (!target.empty()) {
             std::string linked = lookupInternal(target, depth + 1);
-            if (!linked.empty()) return linked;
+            if (!linked.empty()) {
+              allResults += linked;
+              matchCount++;
+            }
           }
           continue;
         }
