@@ -561,7 +561,7 @@ async function exportSectionAsPng(section) {
         const iconSize = 20;
         const xSize = 12; // × line size
         const gap = 8;
-        const smallGap = 4; // Smaller gap between dictName and X
+        const smallGap = 12; // Smaller gap between dictName and X
         const totalWidth = iconSize + gap + dictNameWidth + smallGap + xSize + gap + gdTotalWidth + 20;
         const startX = canvas.width - totalWidth;
         const centerY = watermarkHeight;
