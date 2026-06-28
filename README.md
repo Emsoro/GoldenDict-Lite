@@ -1,4 +1,4 @@
-# GoldenDict-Lite v1.2.4
+# GoldenDict-Lite v1.3.0
 
 轻量级桌面词典，基于 [TauriCPP](https://gitee.com/masonwu21/tauri-cpp) 框架构建，支持 MDX/MDD 词典解析引擎，实现零外部依赖、单 EXE 部署的现代词典应用。
 
@@ -20,8 +20,8 @@
 - **MDD 图片嵌入** — 词条中的 `<img>` 标签自动从 MDD 资源加载并替换为 base64 内嵌图片，无需解压资源文件
 - **系统托盘** — 最小化到托盘，双击恢复
 - **护眼米白金配色** — 温暖舒适的界面主题
-- **纯 C++ 实现** — 无 Qt、无 Electron、无 Rust，纯 Win32 + WebView2
-- **全静态链接** — zlib、WebView2Loader、CRT 均为静态链接，无外部 DLL
+- **PNG 导出** — 每个词典区域可导出为 PNG 图片，带水印
+- **黑金 Toast 提示** — 优雅的通知样式
 
 ## 架构
 
@@ -184,6 +184,13 @@ vcpkg install zlib:x64-windows-static webview2:x64-windows-static
 12. see also、Topics 等交叉引用链接可点击跳转查询
 13. 点击最小化按钮可最小化到系统托盘，双击托盘图标恢复
 
+## v1.3.0 更新内容
+
+- 新增 shell_open 命令 — 支持通过默认浏览器打开外部链接
+- 新增黑金 Toast 提示样式 — 优雅的通知效果
+- 优化状态栏布局 — 版本号与图标更紧凑
+- 版本号更新至 1.3.0
+
 ## v1.2.4 更新内容
 
 - 新增多列布局 — 窗口宽度足够时自动切换为多列显示词典结果
@@ -268,3 +275,9 @@ MIT
 - [goldendict-ng](https://github.com/xiaoyifang/goldendict-ng) — MDICT 解析器来源
 - [TauriCPP](https://gitee.com/masonwu21/tauri-cpp) — WebView2 桌面框架
 - [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) — 微软 WebView2
+
+## 打赏
+
+如果这个项目对你有帮助，欢迎打赏支持：
+
+![打赏](Donate.jpg)
