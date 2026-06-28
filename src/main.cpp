@@ -158,6 +158,113 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int) {
         return {{"success", true}};
     });
 
+    bridge.RegisterCommand("save_png", [](const nlohmann::json& args) -> nlohmann::json {
+        std::string base64Data = args.value("data", "");
+        std::string filename = args.value("filename", "export.png");
+        
+        if (base64Data.empty()) {
+            return {{"success", false}, {"error", "No data provided"}};
+        }
+        
+        // Remove data URL prefix if present
+        size_t commaPos = base64Data.find(',');
+        if (commaPos != std::string::npos) {
+            base64Data = base64Data.substr(commaPos + 1);
+        }
+        
+        // Decode base64
+        static const std::string base64Chars = 
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        
+        std::vector<unsigned char> decoded;
+        decoded.reserve(base64Data.size() * 3 / 4);
+        
+        unsigned char val3[3];
+        unsigned char val4[4];
+        int i = 0, j = 0;
+        
+        for (size_t k = 0; k < base64Data.size(); ++k) {
+            char c = base64Data[k];
+            if (c == '=') break;
+            
+            size_t pos = base64Chars.find(c);
+            if (pos == std::string::npos) continue;
+            
+            val4[i++] = static_cast<unsigned char>(pos);
+            if (i == 4) {
+                val3[0] = (val4[0] << 2) + ((val4[1] & 0x30) >> 4);
+                val3[1] = ((val4[1] & 0xf) << 4) + ((val4[2] & 0x3c) >> 2);
+                val3[2] = ((val4[2] & 0x3) << 6) + val4[3];
+                
+                for (i = 0; i < 3; i++) {
+                    decoded.push_back(val3[i]);
+                }
+                i = 0;
+            }
+        }
+        
+        if (i) {
+            for (j = i; j < 4; j++) val4[j] = 0;
+            val3[0] = (val4[0] << 2) + ((val4[1] & 0x30) >> 4);
+            val3[1] = ((val4[1] & 0xf) << 4) + ((val4[2] & 0x3c) >> 2);
+            val3[2] = ((val4[2] & 0x3) << 6) + val4[3];
+            for (j = 0; j < i - 1; j++) {
+                decoded.push_back(val3[j]);
+            }
+        }
+        
+        // Save to file in current directory
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(nullptr, exePath, MAX_PATH);
+        std::string exeDir = exePath;
+        exeDir = exeDir.substr(0, exeDir.find_last_of("\\/") + 1);
+        
+        std::string filePath = exeDir + filename;
+        
+        // Convert to wide string for Unicode path support
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, filePath.c_str(), -1, nullptr, 0);
+        if (wlen <= 0) {
+            // Try system default codepage
+            wlen = MultiByteToWideChar(CP_ACP, 0, filePath.c_str(), -1, nullptr, 0);
+            if (wlen <= 0) {
+                return {{"success", false}, {"error", "Cannot convert filename to wide string"}};
+            }
+        }
+        
+        std::vector<wchar_t> wFilePath(wlen);
+        // Try UTF-8 first, then ACP
+        if (MultiByteToWideChar(CP_UTF8, 0, filePath.c_str(), -1, wFilePath.data(), wlen) <= 0) {
+            if (MultiByteToWideChar(CP_ACP, 0, filePath.c_str(), -1, wFilePath.data(), wlen) <= 0) {
+                return {{"success", false}, {"error", "Cannot convert filename"}};
+            }
+        }
+        
+        FILE* f = nullptr;
+        if (_wfopen_s(&f, wFilePath.data(), L"wb") != 0 || !f) {
+            return {{"success", false}, {"error", "Cannot open file for writing"}};
+        }
+        
+        size_t written = fwrite(decoded.data(), 1, decoded.size(), f);
+        fclose(f);
+        
+        if (written != decoded.size()) {
+            return {{"success", false}, {"error", "Write incomplete"}};
+        }
+        
+        return {{"success", true}, {"path", filePath}};
+    });
+
+    bridge.RegisterCommand("shell_open", [](const nlohmann::json& args) -> nlohmann::json {
+        std::string url = args.value("url", "");
+        if (url.empty()) return {{"success", false}, {"error", "No URL provided"}};
+        int wlen = MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, nullptr, 0);
+        if (wlen <= 0) return {{"success", false}, {"error", "Cannot convert URL"}};
+        std::vector<wchar_t> wUrl(wlen);
+        MultiByteToWideChar(CP_UTF8, 0, url.c_str(), -1, wUrl.data(), wlen);
+        ShellExecuteW(nullptr, L"open", wUrl.data(), nullptr, nullptr, SW_SHOWNORMAL);
+        return {{"success", true}};
+    });
+
     app.OnSetup([](tauricpp::App& app) {
         g_hwnd = app.GetWindow().GetHwnd();
         AddTrayIcon(g_hwnd);

@@ -41,8 +41,43 @@ body {
     color: #fff;
     font-size: 14px;
     cursor: pointer;
+    position: relative;
+    z-index: 1;
+    overflow: visible;
 }
-.search-bar button:hover { background: #a08f5f; }
+
+.search-bar button::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    border-radius: 6px;
+    background: rgba(184, 164, 114, 0.4);
+    z-index: -1;
+    animation: breathe 2s ease-in-out infinite;
+}
+
+@keyframes breathe {
+    0%, 100% {
+        transform: scale(1);
+        opacity: 0.4;
+    }
+    50% {
+        transform: scale(1.15);
+        opacity: 0;
+    }
+}
+
+.search-bar button:hover { 
+    background: #a08f5f;
+}
+
+.search-bar button:hover::after {
+    animation: none;
+    opacity: 0;
+}
 .suggest-dropdown {
     display: none;
     position: absolute;
@@ -80,12 +115,39 @@ body {
     padding: 60px 20px;
     color: #999;
 }
-.welcome h2 { color: #b8a472; margin-bottom: 12px; font-size: 24px; }
+.welcome h2 { 
+    font-size: 32px;
+    margin-bottom: 12px;
+    font-family: "等线", "DengXian", "Microsoft YaHei", sans-serif;
+}
+.welcome-gd {
+    background: linear-gradient(90deg, #b8a472, #8a7a52);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 300;
+}
+.welcome-lite {
+    background: linear-gradient(90deg, #b8a472, #8a7a52);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: bold;
+}
 .welcome p { margin-bottom: 8px; font-size: 14px; }
-.dict-info { font-size: 12px; color: #aaa; }
-.dict-results { max-width: 800px; }
+.welcome .dict-info { font-size: 12px; color: #aaa; }
+.dict-results {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+@media (min-width: 1200px) {
+    .dict-results { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1800px) {
+    .dict-results { grid-template-columns: repeat(3, 1fr); }
+}
 .dict-section {
-    margin-bottom: 16px;
     border: 1px solid #d4c9a8;
     border-radius: 6px;
     background: #fff;
@@ -108,6 +170,23 @@ body {
     z-index: 1;
 }
 .dict-name:hover { background: #e8e0c8; }
+.dict-name .export-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: rgba(184,164,114,0.3);
+    color: #7a6b4a;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+.dict-name .export-btn:hover { background: rgba(184,164,114,0.6); }
 .dict-name .collapse-btn {
     display: inline-flex;
     align-items: center;
@@ -228,7 +307,77 @@ body {
     align-items: center;
 }
 
+.right-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 #versionText {
     opacity: 0.8;
     font-size: 11px;
+}
+
+.git-link {
+    opacity: 0.8;
+    transition: opacity 0.2s;
+    display: inline-flex;
+    align-items: center;
+    color: #fff;
+    cursor: pointer;
+}
+
+.git-link:hover {
+    opacity: 1;
+}
+
+.git-link svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+/* Custom Dialog */
+.dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.dialog-box {
+    background: #fff;
+    border-radius: 8px;
+    padding: 24px;
+    min-width: 300px;
+    max-width: 500px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    border: 1px solid #d4c9a8;
+}
+.dialog-content {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.6;
+    margin-bottom: 20px;
+    word-break: break-all;
+}
+.dialog-btn {
+    display: block;
+    width: 100%;
+    padding: 10px 20px;
+    background: #b8a472;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.dialog-btn:hover {
+    background: #a08f5f;
 }

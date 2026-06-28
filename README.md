@@ -186,6 +186,9 @@ vcpkg install zlib:x64-windows-static webview2:x64-windows-static
 
 ## v1.2.4 更新内容
 
+- 新增多列布局 — 窗口宽度足够时自动切换为多列显示词典结果
+- 新增导出 PNG 功能 — 每个词典区域右上角按钮，可导出当前词典释义为 PNG 图片
+- 导出图片含水印 — 右上角显示词典图标 + 词典名称 × GoldenDict Lite
 - 修复 `@@@LINK=` 重定向导致跳过后续词典的问题（如查询"流"只显示一个结果）
 - 修复多词典 CSS 样式互相污染问题（每个词典 CSS 通过 `data-dict-index` 属性隔离作用域）
 - 修复 CSS 作用域解析器丢失规则体内容的 bug

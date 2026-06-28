@@ -6,6 +6,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data:">
     <title>GoldenDict-Lite</title>
     <link rel="stylesheet" href="css/style.css">
+    <script src="js/html2canvas.min.js"></script>
 </head>
 <body>
     <div class="app">
@@ -16,16 +17,37 @@
         <div class="suggest-dropdown" id="suggestDropdown"></div>
         <div class="content-area" id="contentArea">
             <div class="welcome">
-                <h2>GoldenDict-Lite</h2>
+                <h2 class="welcome-title">
+                    <span class="welcome-gd">GoldenDict</span>
+                    <span class="welcome-lite"> Lite</span>
+                </h2>
                 <p>Enter a word to search in the dictionary.</p>
                 <p id="dictInfo" class="dict-info"></p>
             </div>
         </div>
         <div class="status-bar">
             <span id="statusText">Ready</span>
-            <span id="versionText">v1.2.4</span>
+            <div class="right-group">
+                <span id="versionText">v1.3.0</span>
+                <a href="https://github.com/Emsoro/GoldenDict-Lite" class="git-link" title="GitHub">
+                    <svg viewBox="0 0 16 16" width="16" height="16">
+                        <path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+                    </svg>
+                </a>
+                <a href="https://gitee.com/masonwu21/golden-dict-lite" class="git-link" title="Gitee">
+                    <svg viewBox="0 0 1024 1024" width="16" height="16">
+                        <path fill="currentColor" d="M512 1024q-104 0-199-40-92-39-163-110T40 711Q0 616 0 512t40-199Q79 221 150 150T313 40q95-40 199-40t199 40q92 39 163 110t110 163q40 95 40 199t-40 199q-39 92-110 163T711 984q-95 40-199 40z m259-569H480q-10 0-17.5 7.5T455 480v64q0 10 7.5 17.5T480 569h177q11 0 18.5 7.5T683 594v13q0 31-22.5 53.5T607 683H367q-11 0-18.5-7.5T341 657V417q0-31 22.5-53.5T417 341h354q11 0 18-7t7-18v-63q0-11-7-18t-18-7H417q-38 0-72.5 14T283 283q-27 27-41 61.5T228 417v354q0 11 7 18t18 7h373q46 0 85.5-22.5t62-62Q796 672 796 626V480q0-10-7-17.5t-18-7.5z"/>
+                    </svg>
+                </a>
+            </div>
         </div>
         <div class="dict-bar" id="dictBar"></div>
+    </div>
+    <div id="customDialog" class="dialog-overlay" style="display:none;">
+        <div class="dialog-box">
+            <div class="dialog-content" id="dialogContent"></div>
+            <button class="dialog-btn" id="dialogBtn">确定</button>
+        </div>
     </div>
     <script src="js/app.js"></script>
 </body>

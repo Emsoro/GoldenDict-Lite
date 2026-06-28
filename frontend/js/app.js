@@ -279,6 +279,17 @@ window.playAudio = async function(dictTitle, resourcePath) {
 // Event delegation: intercept clicks on links with data-sound attribute
 // AND handle inline onclick from MDX content (e.g. Oxford Extra Examples toggle)
 document.addEventListener('click', function(e) {
+    // Handle git-link clicks: open in default browser via TauriCPP
+    const gitLink = e.target.closest('.git-link');
+    if (gitLink) {
+        e.preventDefault();
+        const url = gitLink.getAttribute('href');
+        if (url) {
+            __tauricpp__.invoke('shell_open', { url });
+        }
+        return;
+    }
+
     // Handle entry:// links (see also, topics, cross-references)
     const entryLink = e.target.closest('a[href^="entry://"]');
     if (entryLink) {
@@ -381,13 +392,31 @@ async function doSearch(word) {
             contentArea.innerHTML = `<div class="dict-results">${result.html}</div>`;
             // Reorder dict-sections to match dictOrder
             reorderResults();
-            // Add collapse buttons to dict-name headers
+            // Add collapse buttons and export buttons to dict-name headers
             contentArea.querySelectorAll('.dict-name').forEach(nameEl => {
                 const btn = document.createElement('span');
                 btn.className = 'collapse-btn';
                 btn.textContent = '\u25BC'; // ▼
                 nameEl.insertBefore(btn, nameEl.firstChild);
-                nameEl.addEventListener('click', () => {
+
+                // Add export button
+                const exportBtn = document.createElement('button');
+                exportBtn.className = 'export-btn';
+                exportBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+                exportBtn.title = '导出为 PNG';
+                exportBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const section = nameEl.closest('.dict-section');
+                    if (section) {
+                        exportSectionAsPng(section);
+                    }
+                });
+                nameEl.appendChild(exportBtn);
+
+                nameEl.addEventListener('click', (e) => {
+                    // Don't toggle if clicking export button
+                    if (e.target.classList.contains('export-btn')) return;
+
                     const article = nameEl.nextElementSibling;
                     if (article && article.classList.contains('dict-article')) {
                         nameEl.classList.toggle('collapsed');
@@ -469,6 +498,202 @@ searchInput.addEventListener('blur', () => {
 });
 
 searchBtn.addEventListener('click', () => doSearch());
+
+// ============================================================================
+// Export section as PNG with watermark
+// ============================================================================
+
+async function exportSectionAsPng(section) {
+    const dictName = section.dataset.dict || 'Dictionary';
+    const article = section.querySelector('.dict-article');
+    const iconImg = section.querySelector('.dict-name img');
+    
+    if (!article) return;
+    
+    try {
+        console.log('Starting export...');
+        console.log('html2canvas available:', typeof html2canvas);
+        
+        if (typeof html2canvas === 'undefined') {
+            alert('html2canvas 未加载，请检查网络连接后刷新页面');
+            return;
+        }
+        
+        // Use html2canvas to capture the article content
+        console.log('Calling html2canvas...');
+        const canvas = await html2canvas(article, {
+            backgroundColor: '#ffffff',
+            scale: 2,
+            useCORS: true,
+            logging: false
+        });
+        console.log('html2canvas completed, canvas size:', canvas.width, 'x', canvas.height);
+        
+        // Add watermark at top
+        const watermarkHeight = 28;
+        const finalCanvas = document.createElement('canvas');
+        finalCanvas.width = canvas.width;
+        finalCanvas.height = canvas.height + watermarkHeight * 2; // scale 2
+        const finalCtx = finalCanvas.getContext('2d');
+        
+        // Draw watermark background at top (lighter)
+        finalCtx.fillStyle = 'rgba(250, 248, 242, 0.95)';
+        finalCtx.fillRect(0, 0, canvas.width, watermarkHeight * 2);
+        
+        // Draw border at bottom of watermark
+        finalCtx.strokeStyle = '#e8e0c8';
+        finalCtx.lineWidth = 1;
+        finalCtx.beginPath();
+        finalCtx.moveTo(0, watermarkHeight * 2);
+        finalCtx.lineTo(canvas.width, watermarkHeight * 2);
+        finalCtx.stroke();
+        
+        // Calculate text metrics first for right alignment
+        finalCtx.font = 'italic 18px "等线", "DengXian", "Microsoft YaHei", sans-serif';
+        const dictNameWidth = finalCtx.measureText(dictName).width;
+        finalCtx.font = 'italic 17px "等线", "DengXian", "Microsoft YaHei", sans-serif';
+        const gdWidth = finalCtx.measureText('GoldenDict ').width;
+        finalCtx.font = 'italic bold 17px "等线", "DengXian", "Microsoft YaHei", sans-serif';
+        const liteWidth = finalCtx.measureText('Lite').width;
+        const gdTotalWidth = gdWidth + liteWidth;
+        
+        // Calculate total width and right-align position
+        const iconSize = 20;
+        const xSize = 12; // × line size
+        const gap = 8;
+        const smallGap = 4; // Smaller gap between dictName and X
+        const totalWidth = iconSize + gap + dictNameWidth + smallGap + xSize + gap + gdTotalWidth + 20;
+        const startX = canvas.width - totalWidth;
+        const centerY = watermarkHeight;
+        
+        // Draw icon (aligned with text baseline)
+        let currentX = startX;
+        if (iconImg && iconImg.src) {
+            try {
+                const icon = new Image();
+                await new Promise((resolve, reject) => {
+                    icon.onload = resolve;
+                    icon.onerror = reject;
+                    icon.src = iconImg.src;
+                });
+                // Align icon vertically with text - adjust for 2x scale
+                finalCtx.drawImage(icon, currentX, centerY - iconSize/2 - 2, iconSize, iconSize);
+                currentX += iconSize + gap;
+            } catch (e) {
+                console.warn('Failed to load icon for watermark');
+            }
+        }
+        
+        // Draw text - dictName with black-gold to gold gradient (italic)
+        const dictGradient = finalCtx.createLinearGradient(currentX, 0, currentX + dictNameWidth, 0);
+        dictGradient.addColorStop(0, '#333');
+        dictGradient.addColorStop(0.5, '#8a7a52');
+        dictGradient.addColorStop(1, '#b8a472');
+        finalCtx.fillStyle = dictGradient;
+        finalCtx.font = 'italic 18px "等线", "DengXian", "Microsoft YaHei", sans-serif';
+        finalCtx.textBaseline = 'middle';
+        finalCtx.fillText(dictName, currentX, centerY);
+        currentX += dictNameWidth + smallGap; // Use smaller gap
+        
+        // Draw × as modern graphic (wider angle, obtuse)
+        finalCtx.strokeStyle = '#b8a472';
+        finalCtx.lineWidth = 1.5;
+        finalCtx.lineCap = 'round';
+        const xCenterX = currentX + xSize/2;
+        const xCenterY = centerY;
+        // Wider X - larger vertical span for obtuse angle
+        finalCtx.beginPath();
+        finalCtx.moveTo(xCenterX - xSize/2, xCenterY - xSize/1.5);
+        finalCtx.lineTo(xCenterX + xSize/2, xCenterY + xSize/1.5);
+        finalCtx.moveTo(xCenterX + xSize/2, xCenterY - xSize/1.5);
+        finalCtx.lineTo(xCenterX - xSize/2, xCenterY + xSize/1.5);
+        finalCtx.stroke();
+        currentX += xSize + gap;
+        
+        // Draw GoldenDict (gradient, italic)
+        const gradient = finalCtx.createLinearGradient(currentX, 0, currentX + gdTotalWidth, 0);
+        gradient.addColorStop(0, '#b8a472');
+        gradient.addColorStop(1, '#8a7a52');
+        finalCtx.fillStyle = gradient;
+        finalCtx.font = 'italic 17px "等线", "DengXian", "Microsoft YaHei", sans-serif';
+        finalCtx.fillText('GoldenDict ', currentX, centerY);
+        
+        // Draw Lite (bold, gradient)
+        finalCtx.font = 'italic bold 17px "等线", "DengXian", "Microsoft YaHei", sans-serif';
+        finalCtx.fillText('Lite', currentX + gdWidth, centerY);
+        
+        // Draw original content below watermark
+        finalCtx.drawImage(canvas, 0, watermarkHeight * 2);
+        
+        console.log('Converting to dataURL...');
+        // Convert to base64 and save via C++
+        const dataUrl = finalCanvas.toDataURL('image/png');
+        console.log('dataURL length:', dataUrl.length);
+        
+        const filename = `${dictName}_${Date.now()}.png`;
+        
+        console.log('Calling save_png...');
+        const result = await __tauricpp__.invoke('save_png', {
+            data: dataUrl,
+            filename: filename
+        });
+        console.log('save_png result:', result);
+        
+        if (result.success) {
+            showToast('图片已保存至：' + result.path);
+        } else {
+            showToast('保存失败：' + (result.error || '未知错误'), true);
+        }
+        
+    } catch (e) {
+        console.error('Export failed:', e);
+        let errorMsg = '未知错误';
+        if (e === undefined) {
+            errorMsg = '错误对象为 undefined';
+        } else if (e === null) {
+            errorMsg = '错误对象为 null';
+        } else if (e instanceof Error) {
+            errorMsg = e.message + '\n' + e.stack;
+        } else if (typeof e === 'string') {
+            errorMsg = e;
+        } else if (typeof e === 'object') {
+            errorMsg = JSON.stringify(e, null, 2);
+        } else {
+            errorMsg = String(e);
+        }
+        showCustomDialog('导出失败：' + errorMsg);
+    }
+}
+
+// Toast notification function
+function showToast(message, isError = false) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: ${isError ? '#3a3020' : '#1a1a1a'};
+        color: ${isError ? '#e8a040' : '#b8a472'};
+        border: 1px solid ${isError ? '#8a6a30' : '#b8a472'};
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-size: 14px;
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        max-width: 80%;
+        word-break: break-all;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => toast.style.opacity = '1', 10);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => document.body.removeChild(toast), 300);
+    }, 3000);
+}
 
 // Init
 loadDictInfo();
