@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GoldenDict Lite - 轻量级桌面词典</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#faf8f2;--card:#fff;--gold:#b8a472;--dark:#2c2c2c;--text:#333;--light:#f5f0e8;--border:#e8e0c8;--search-bg:#f0ead6;--search-border:#d4c9a8;--shadow:0 4px 24px rgba(0,0,0,.06)}
+body{font-family:"Segoe UI","Microsoft YaHei","PingFang SC","Helvetica Neue",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+
+/* Title bar - match EXE */
+.titlebar{background:var(--dark);height:36px;display:flex;align-items:center;padding:0 12px;color:#fff;font-size:13px;gap:8px;overflow:visible}
+.titlebar-icon{width:18px;height:18px;background:var(--gold);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;font-family:serif}
+.titlebar-text{font-family:"等线","DengXian","Microsoft YaHei",sans-serif;font-style:italic;padding-right:6px}
+.titlebar-text b{font-weight:700}
+
+/* Watermark-style logo */
+.logo-title{font-family:"等线","DengXian","Microsoft YaHei",sans-serif;font-style:italic;display:inline-flex;align-items:center;gap:6px}
+.logo-title .gd{font-weight:300;background:linear-gradient(90deg,#b8a472,#8a7a52);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo-title .lite{font-weight:700;background:linear-gradient(90deg,#b8a472,#8a7a52);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;padding-right:6px}
+
+/* Fix italic clipping */
+.hero h1,.hero-inner{overflow:visible}
+.hero h1{overflow:visible}
+
+/* Nav - match EXE search bar style */
+.nav{position:sticky;top:0;background:var(--search-bg);border-bottom:1px solid var(--search-border);z-index:100;padding:10px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;overflow:visible}
+.nav-left{display:flex;align-items:center;gap:20px}
+.nav-links{display:flex;gap:20px;font-size:13px}
+.nav-links a{color:var(--text);text-decoration:none;transition:color .2s;white-space:nowrap}
+.nav-links a:hover{color:var(--gold)}
+.nav-icons{display:flex;gap:12px;align-items:center}
+.nav-icons a{display:flex;align-items:center}
+.nav-icons svg,.nav-icons img{width:20px;height:20px;opacity:.7;transition:opacity .2s}
+.nav-icons a:hover svg,.nav-icons a:hover img{opacity:1}
+
+/* Hero - showcase app screenshot */
+.hero{padding:60px 40px 0;background:linear-gradient(180deg,var(--bg) 0%,var(--light) 100%)}
+.hero-inner{max-width:960px;margin:0 auto;padding:0 4px}
+.hero h1{font-size:40px;margin-bottom:8px;text-align:left}
+.hero .version{display:inline-block;padding:3px 12px;background:rgba(184,164,114,.12);color:var(--gold);border-radius:20px;font-size:13px;font-weight:600;margin-bottom:12px;text-align:left}
+.hero .subtitle{font-size:16px;color:#888;margin-bottom:36px;text-align:left}
+.hero-screenshot{max-width:960px;margin:0 auto;position:relative}
+.hero-screenshot img{width:100%;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.12);border:1px solid var(--border)}
+.hero-stats{display:flex;justify-content:center;gap:48px;margin-top:48px;padding-bottom:48px}
+.hero-stats .stat{text-align:center}
+.hero-stats .stat-num{font-size:28px;font-weight:700;color:var(--gold)}
+.hero-stats .stat-label{font-size:12px;color:#999;margin-top:2px}
+
+/* Scrolling logos */
+.logo-track-wrap{overflow:hidden;padding:16px 0;position:relative;border-top:1px solid var(--border);border-bottom:1px solid var(--border);background:rgba(255,255,255,.5)}
+.logo-track-wrap::before,.logo-track-wrap::after{content:'';position:absolute;top:0;bottom:0;width:80px;z-index:2}
+.logo-track-wrap::before{left:0;background:linear-gradient(90deg,var(--light),transparent)}
+.logo-track-wrap::after{right:0;background:linear-gradient(-90deg,var(--light),transparent)}
+.logo-track{display:flex;gap:40px;animation:scroll-left 35s linear infinite;width:max-content}
+.logo-track .logo-item{display:flex;align-items:center;gap:8px;font-size:13px;color:#999;white-space:nowrap;flex-shrink:0}
+.logo-track .logo-item svg{width:18px;height:18px;opacity:.4}
+@keyframes scroll-left{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* Section */
+.section{padding:72px 40px;max-width:1080px;margin:0 auto}
+.section-title{text-align:center;margin-bottom:44px}
+.section-title h2{font-size:28px;color:var(--dark);margin-bottom:6px}
+.section-title p{color:#999;font-size:13px}
+.section-title .line{width:40px;height:2px;background:var(--gold);margin:10px auto 0;border-radius:2px}
+
+/* Features */
+.features{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.feature-card{background:var(--card);border:1px solid var(--search-border);border-radius:10px;padding:24px;transition:transform .2s,box-shadow .2s}
+.feature-card:hover{transform:translateY(-3px);box-shadow:var(--shadow)}
+.feature-card .icon{width:40px;height:40px;background:var(--search-bg);border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;font-size:20px}
+.feature-card h3{font-size:15px;color:var(--dark);margin-bottom:6px}
+.feature-card p{font-size:13px;color:#888;line-height:1.6}
+
+/* Compare */
+.compare-wrap{overflow-x:auto}
+table.compare{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border-radius:10px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--search-border)}
+table.compare th{background:var(--dark);color:#fff;padding:12px 18px;text-align:left;font-weight:500}
+table.compare td{padding:11px 18px;border-bottom:1px solid #f0ece4}
+table.compare tr:last-child td{border-bottom:none}
+table.compare tr:hover td{background:#faf7f0}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-gold{background:rgba(184,164,114,.15);color:var(--gold)}
+
+/* Users */
+.users-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.user-card{background:var(--card);border:1px solid var(--search-border);border-radius:8px;padding:18px;text-align:center;transition:box-shadow .2s}
+.user-card:hover{box-shadow:var(--shadow)}
+.user-card .avatar{width:44px;height:44px;border-radius:50%;background:var(--search-bg);margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:18px}
+.user-card .name{font-size:13px;font-weight:600;color:var(--dark)}
+.user-card .role{font-size:11px;color:#999;margin-top:2px}
+
+/* Download */
+.download-section{background:var(--dark);padding:72px 40px;text-align:center;color:#fff}
+.download-section h2{font-size:28px;margin-bottom:10px}
+.download-section p{color:rgba(255,255,255,.5);font-size:13px;margin-bottom:28px}
+.download-cards{display:flex;justify-content:center;gap:20px;flex-wrap:wrap}
+.download-card{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:28px 36px;text-align:center;transition:background .2s;min-width:190px}
+.download-card:hover{background:rgba(255,255,255,.12)}
+.download-card .dl-icon{font-size:32px;margin-bottom:10px}
+.download-card .dl-title{font-size:15px;font-weight:600;margin-bottom:3px}
+.download-card .dl-desc{font-size:11px;color:rgba(255,255,255,.45)}
+.download-card .dl-btn{display:inline-block;margin-top:14px;padding:9px 24px;border-radius:6px;text-decoration:none;font-size:13px;font-weight:600;transition:all .2s}
+.dl-btn-gold{background:var(--gold);color:var(--dark)}
+.dl-btn-gold:hover{background:#c9b57e}
+.dl-btn-outline{border:1px solid var(--gold);color:var(--gold)}
+.dl-btn-outline:hover{background:rgba(184,164,114,.15)}
+
+/* Contact */
+.contact{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:start}
+.contact-info{font-size:13px;color:#666;line-height:2}
+.contact-info a{color:var(--gold);text-decoration:none}
+.contact-info a:hover{text-decoration:underline}
+.contact-links{display:flex;gap:10px;margin-top:14px}
+.contact-links a{display:flex;align-items:center;justify-content:center;width:40px;height:40px;background:var(--search-bg);border-radius:8px;transition:background .2s}
+.contact-links a:hover{background:var(--border)}
+.contact-links img{width:20px;height:20px}
+.contact-donate img{width:250px;border-radius:8px;display:block}
+
+/* Footer */
+.footer{text-align:center;padding:28px;font-size:11px;color:#bbb;border-top:1px solid var(--border)}
+
+@media(max-width:768px){
+  .nav{padding:8px 16px;flex-wrap:wrap}
+  .nav-links{display:none}
+  .hero{padding:40px 20px 0}
+  .hero h1{font-size:28px}
+  .hero-stats{gap:20px;flex-wrap:wrap}
+  .section{padding:48px 20px}
+  .contact{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- Title bar - match EXE -->
+<div class="titlebar">
+  <div class="titlebar-icon">G</div>
+  <span class="titlebar-text"><span style="font-weight:300">GoldenDict</span> <b>Lite</b></span>
+</div>
+
+<!-- Nav -->
+<nav class="nav">
+  <div class="nav-left">
+    <a href="#" class="logo-title" style="font-size:16px;text-decoration:none"><span class="gd">GoldenDict</span> <span class="lite">Lite</span></a>
+    <div class="nav-links">
+      <a href="#features">功能特性</a>
+      <a href="#compare">对比</a>
+      <a href="#users">用户</a>
+      <a href="#download">下载</a>
+      <a href="#contact">联系</a>
+    </div>
+  </div>
+  <div class="nav-icons">
+    <a href="https://github.com/Emsoro/GoldenDict-Lite" target="_blank" title="GitHub">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="#333"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+    </a>
+    <a href="https://gitee.com/masonwu21/golden-dict-lite" target="_blank" title="Gitee">
+      <svg width="20" height="20" viewBox="0 0 1024 1024"><path d="M512 1024C229.2224 1024 0 794.7776 0 512S229.2224 0 512 0s512 229.2224 512 512-229.2224 512-512 512zm259.1488-568.8832H480.4096a25.2928 25.2928 0 00-25.2928 25.2928l-0.0256 63.2064c0 13.952 11.3152 25.2928 25.2672 25.2928h177.024c13.9776 0 25.2928 11.3152 25.2928 25.2672v12.6464a75.8528 75.8528 0 01-75.8528 75.8528H366.592a25.2928 25.2928 0 01-25.2672-25.2928v-240.1792a75.8528 75.8528 0 0175.8272-75.8528h353.9456a25.2928 25.2928 0 0025.2672-25.2928l0.0768-63.2064a25.2928 25.2928 0 00-25.2672-25.2928H417.152a189.6192 189.6192 0 00-189.6192 189.6448v353.9456c0 13.9776 11.3152 25.2928 25.2928 25.2928h372.9408a170.6496 170.6496 0 00170.6496-170.6496v-145.408a25.2928 25.2928 0 00-25.2928-25.2672z" fill="#C71D23"/></svg>
+    </a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-inner">
+    <h1><span class="logo-title" style="font-size:inherit"><span class="gd">GoldenDict</span> <span class="lite">Lite</span></span></h1>
+    <div class="version">v1.3.0</div>
+    <p class="subtitle">基于 TauriCPP + WebView2 构建的轻量级桌面词典，零依赖、单 EXE 部署。</p>
+  </div>
+  <div class="hero-screenshot">
+    <img src="welcome.png" alt="GoldenDict Lite 界面截图">
+  </div>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-num">~2MB</div><div class="stat-label">二进制体积</div></div>
+    <div class="stat"><div class="stat-num">3.8MB</div><div class="stat-label">内存占用</div></div>
+    <div class="stat"><div class="stat-num">&lt;1s</div><div class="stat-label">启动速度</div></div>
+    <div class="stat"><div class="stat-num">0</div><div class="stat-label">外部依赖</div></div>
+  </div>
+</section>
+
+<!-- Scrolling logos -->
+<div class="logo-track-wrap">
+  <div class="logo-track">
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">牛</text></svg>牛津高阶英汉双解词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">朗</text></svg>朗文当代英语词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">柯</text></svg>柯林斯英汉双解词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">韦</text></svg>韦氏英语词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="11" fill="#b8a472" font-family="sans-serif">MW</text></svg>Merriam-Webster</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="11" fill="#b8a472" font-family="sans-serif">Ox</text></svg>Oxford Dictionary</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">陆</text></svg>陆谷孙英汉大词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">王</text></svg>王力古汉语字典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">日</text></svg>大辞林日日词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">新</text></svg>新世纪日汉双解词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">法</text></svg>法语助手词典</div>
+    <!-- duplicate for seamless loop -->
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">牛</text></svg>牛津高阶英汉双解词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">朗</text></svg>朗文当代英语词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">柯</text></svg>柯林斯英汉双解词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">韦</text></svg>韦氏英语词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="11" fill="#b8a472" font-family="sans-serif">MW</text></svg>Merriam-Webster</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="11" fill="#b8a472" font-family="sans-serif">Ox</text></svg>Oxford Dictionary</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">陆</text></svg>陆谷孙英汉大词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">王</text></svg>王力古汉语字典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">日</text></svg>大辞林日日词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">新</text></svg>新世纪日汉双解词典</div>
+    <div class="logo-item"><svg viewBox="0 0 32 32"><rect width="32" height="32" rx="5" fill="#b8a472" opacity=".25"/><text x="16" y="21" text-anchor="middle" font-size="14" fill="#b8a472" font-family="serif">法</text></svg>法语助手词典</div>
+  </div>
+</div>
+
+<!-- Features -->
+<section class="section" id="features">
+  <div class="section-title">
+    <h2>功能特性</h2>
+    <p>精简但不简单</p>
+    <div class="line"></div>
+  </div>
+  <div class="features">
+    <div class="feature-card">
+      <div class="icon">&#9889;</div>
+      <h3>单 EXE 部署</h3>
+      <p>WebView2Loader 静态链接，前端资源内嵌，无需安装运行时，双击即用。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128214;</div>
+      <h3>MDX/MDD 词典</h3>
+      <p>兼容 .mdx 词典格式，支持加密词典和 MDD 多媒体资源，多卷自动加载。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#127925;</div>
+      <h3>音频播放</h3>
+      <p>词典内 sound:// 链接自动替换为可点击播放的音频，支持 MDD 音频资源。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128269;</div>
+      <h3>实时自动补全</h3>
+      <p>输入即搜，候选词即时显示，回车或点击直接查询，极速响应。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128193;</div>
+      <h3>多词典同时查询</h3>
+      <p>递归扫描 dictionary/ 目录，一次查询显示所有词典结果，按词典分组折叠。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128247;</div>
+      <h3>MDD 图片嵌入</h3>
+      <p>词条中的图片自动从 MDD 资源加载并替换为 base64 内嵌图片，点击可切换缩略图/大图。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128274;</div>
+      <h3>SQLite 缓存</h3>
+      <p>词典索引缓存到本地数据库，二次启动秒加载，无需重复解析。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128196;</div>
+      <h3>PNG 导出</h3>
+      <p>每个词典区域可导出为 PNG 图片，带水印，方便分享和笔记。</p>
+    </div>
+    <div class="feature-card">
+      <div class="icon">&#128256;</div>
+      <h3>系统托盘</h3>
+      <p>最小化到系统托盘，双击恢复，不占任务栏空间。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Compare -->
+<section class="section" id="compare">
+  <div class="section-title">
+    <h2>与 goldendict-ng 的对比</h2>
+    <p>更轻、更快、更纯粹</p>
+    <div class="line"></div>
+  </div>
+  <div class="compare-wrap">
+    <table class="compare">
+      <thead>
+        <tr><th>特性</th><th>GoldenDict Lite</th><th>goldendict-ng</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>UI 框架</td><td><span class="badge badge-gold">TauriCPP + WebView2</span></td><td>Qt 6 + WebEngine</td></tr>
+        <tr><td>二进制大小</td><td><span class="badge badge-gold">~2MB</span></td><td>~50MB+</td></tr>
+        <tr><td>内存占用</td><td><span class="badge badge-gold">~3.8MB</span></td><td>~200MB</td></tr>
+        <tr><td>启动速度</td><td><span class="badge badge-gold">&lt;1s</span></td><td>2-5s</td></tr>
+        <tr><td>外部依赖</td><td><span class="badge badge-gold">零依赖</span></td><td>Qt 6, OpenSSL, XZ, FFmpeg 等</td></tr>
+        <tr><td>安装方式</td><td><span class="badge badge-gold">单 EXE，无需安装</span></td><td>需安装 Qt 运行时</td></tr>
+        <tr><td>前端保护</td><td><span class="badge badge-gold">资源编译进 EXE</span></td><td>WebEngine 渲染</td></tr>
+        <tr><td>词典格式</td><td>MDX/MDD</td><td>MDX, DSL, BGL, StarDict, ZIM 等 15+</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Users -->
+<section class="section" id="users">
+  <div class="section-title">
+    <h2>谁在使用</h2>
+    <p>来自不同领域的用户</p>
+    <div class="line"></div>
+  </div>
+  <div class="users-grid">
+    <div class="user-card">
+      <div class="avatar">&#127891;</div>
+      <div class="name">英语学习者</div>
+      <div class="role">多词典交叉查询，快速查词</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#128218;</div>
+      <div class="name">翻译工作者</div>
+      <div class="role">专业词典并行查看，提升翻译效率</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#128187;</div>
+      <div class="name">开发者</div>
+      <div class="role">轻量无干扰，专注技术文档查阅</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#127759;</div>
+      <div class="name">多语种学习者</div>
+      <div class="role">日语、法语、德语等多语种词典支持</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#9997;</div>
+      <div class="name">文学研究者</div>
+      <div class="role">古汉语字典、专业词典深度查询</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#128241;</div>
+      <div class="name">效率至上用户</div>
+      <div class="role">秒启动、零依赖、极致轻量</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#127760;</div>
+      <div class="name">弱网环境用户</div>
+      <div class="role">无需联网，离线即可查词</div>
+    </div>
+    <div class="user-card">
+      <div class="avatar">&#128272;</div>
+      <div class="name">受限环境用户</div>
+      <div class="role">单 EXE 免安装，无需管理员权限</div>
+    </div>
+  </div>
+</section>
+
+<!-- Download -->
+<section class="download-section" id="download">
+  <h2>立即下载</h2>
+  <p>最新版本 v1.3.0 | Windows 10/11 | 仅 ~2MB</p>
+  <div class="download-cards">
+    <div class="download-card">
+      <div class="dl-icon">&#128187;</div>
+      <div class="dl-title">Windows 64-bit</div>
+      <div class="dl-desc">Release 版本</div>
+      <a href="https://github.com/Emsoro/GoldenDict-Lite/releases" target="_blank" class="dl-btn dl-btn-gold">GitHub 下载</a>
+    </div>
+    <div class="download-card">
+      <div class="dl-icon">&#128187;</div>
+      <div class="dl-title">Windows 64-bit</div>
+      <div class="dl-desc">Gitee 镜像</div>
+      <a href="https://gitee.com/masonwu21/golden-dict-lite/releases" target="_blank" class="dl-btn dl-btn-gold">Gitee 下载</a>
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section class="section" id="contact">
+  <div class="section-title">
+    <h2>联系我们</h2>
+    <p>欢迎反馈问题和建议</p>
+    <div class="line"></div>
+  </div>
+  <div class="contact">
+    <div class="contact-info">
+      <p><strong>GitHub Issues</strong><br><a href="https://github.com/Emsoro/GoldenDict-Lite/issues" target="_blank">github.com/Emsoro/GoldenDict-Lite/issues</a></p>
+      <p><strong>Gitee Issues</strong><br><a href="https://gitee.com/masonwu21/golden-dict-lite/issues" target="_blank">gitee.com/masonwu21/golden-dict-lite/issues</a></p>
+      <p><strong>仓库地址</strong></p>
+      <div class="contact-links">
+        <a href="https://github.com/Emsoro/GoldenDict-Lite" target="_blank" title="GitHub">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#333"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        </a>
+        <a href="https://gitee.com/masonwu21/golden-dict-lite" target="_blank" title="Gitee">
+          <svg width="20" height="20" viewBox="0 0 1024 1024"><path d="M512 1024C229.2224 1024 0 794.7776 0 512S229.2224 0 512 0s512 229.2224 512 512-229.2224 512-512 512zm259.1488-568.8832H480.4096a25.2928 25.2928 0 00-25.2928 25.2928l-0.0256 63.2064c0 13.952 11.3152 25.2928 25.2672 25.2928h177.024c13.9776 0 25.2928 11.3152 25.2928 25.2672v12.6464a75.8528 75.8528 0 01-75.8528 75.8528H366.592a25.2928 25.2928 0 01-25.2672-25.2928v-240.1792a75.8528 75.8528 0 0175.8272-75.8528h353.9456a25.2928 25.2928 0 0025.2672-25.2928l0.0768-63.2064a25.2928 25.2928 0 00-25.2672-25.2928H417.152a189.6192 189.6192 0 00-189.6192 189.6448v353.9456c0 13.9776 11.3152 25.2928 25.2928 25.2928h372.9408a170.6496 170.6496 0 00170.6496-170.6496v-145.408a25.2928 25.2928 0 00-25.2928-25.2672z" fill="#C71D23"/></svg>
+        </a>
+      </div>
+      <p style="margin-top:20px"><strong>开源协议</strong><br>MIT License</p>
+    </div>
+    <div class="contact-donate">
+      <img src="Donate.jpg" alt="打赏">
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<div class="footer">
+  GoldenDict Lite &copy; 2024-2026 | MIT License | Built with TauriCPP + WebView2
+</div>
+
+</body>
+</html>
